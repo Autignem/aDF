@@ -2,7 +2,7 @@
 aDF adds a small HUD that standardizes critical info about your target's defences, including Armor, Resistence, and specific debuffs. This HUD should be useful to all DPS and Tank players who would play differently depending on the state of their enemy's defenses and vulnerabilities.
 This is a specific version customized for Doom Turtle, adapted to our raid group's specific needs
 
-![image](<img width="560" height="771" alt="adf_1" src="https://github.com/user-attachments/assets/f6ca1fde-ae0b-4e1d-9ff5-ad206e3f1cec" />)
+<img width="560" height="771" alt="adf_1" src="https://github.com/user-attachments/assets/f6ca1fde-ae0b-4e1d-9ff5-ad206e3f1cec" />
 
 ![image](https://github.com/Autignem/aDF/assets/adf_2)
 
