@@ -16,12 +16,12 @@ The version for 1.12 exists on the `master` branch while a version with changes 
 
 ## Known issues
 
-See originaL in https://github.com/Zebouski/aDF/issues. Pull requests are welcome
-This version can see in . Pull request are welcome
+This version can see in https://github.com/Autignem/aDF/issues. Pull request are welcome
 
 ## Credits
 
 Currently developed and maintained by Zaas-TurtleWoW
+See originaL in https://github.com/Zebouski/aDF/
 
 Some code merged in by Github @Goffauxs
 
