@@ -1,4 +1,7 @@
 # aDF for Turtle WoW
+
+IMPORTANT: If you are updating your aDF addon to this version, you MUST go to your WTF folder, then Account -> [Your Account Name] -> SavedVariables, and DELETE the old 'aDF.lua' and 'aDF.lua.bak' files.
+
 aDF adds a small HUD that standardizes critical info about your target's defences, including Armor, Resistence, and specific debuffs. This HUD should be useful to all DPS and Tank players who would play differently depending on the state of their enemy's defenses and vulnerabilities.
 This is a specific version customized for Doom Turtle, adapted to our raid group's specific needs
 
