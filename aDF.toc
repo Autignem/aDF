@@ -1,0 +1,10 @@
+## Interface: 11200
+## Title: aDF |cff7fff7fby |cffF5F54AAutignem
+## Author: Original Atreyyo, Contributor: Autignem
+## Version: 4.0
+## Notes: Armor/resistance and Debuff frame
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## SavedVariables: guiOptions, gui_Options, gui_chan, gui_Optionsxy, aDF_x, aDF_y, gui_announceArmorDrop, gui_showArmorBackground, gui_showArmorText, gui_showResText
+
+aDF.lua
