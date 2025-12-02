@@ -2,6 +2,22 @@
 --########### By Atreyyo @ Vanillagaming.org <--original
 --########### Contributor: Autignem <--reworked
 
+-- order of sections:
+-- 1. FRAME INITIALIZATION
+-- 2. GLOBAL VARIABLES AND STORAGE
+-- 3. DATA TABLES: SPELLS AND DEBUFFS
+-- 4. DATA TABLE: ARMOR VALUES
+-- 5. DATA TABLE: DEBUFF ORDER
+-- 6. UTILITY FUNCTIONS
+-- 7. DEBUFF FRAME CREATION
+-- 8. MAIN ARMOR/RESISTANCE FRAME
+-- 9. UPDATE FUNCTIONS
+-- 10. SORT & POSITIONING
+-- 11. DEBUFF DETECTION
+-- 12. OPTIONS FRAME & UI
+-- 13. EVENT HANDLING
+-- 14. SCRIPT REGISTRATION
+
 -- ==== FRAME INITIALIZATION ==== Aqui declaramos los frames principales
 
 aDF = CreateFrame('Button', "aDF", UIParent) -- Main event frame
@@ -991,3 +1007,4 @@ end
 SlashCmdList['ADF_SLASH'] = aDF.slash
 SLASH_ADF_SLASH1 = '/adf'
 SLASH_ADF_SLASH2 = '/ADF'
+
