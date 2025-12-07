@@ -5,6 +5,14 @@
 
 *** Always delete aDF.lua in the WTF folder when updating this addon, or if you are unsure where to find it, delete entire WTF folder.
 
+--- New version --- v4.1
+
+### Changes Made:
+
+- **Fixed the issue where target debuffs were getting mixed up.
+- **Performance improved; the impact should be negligible now.
+- **Added a tostring call to prevent excessive function calls
+
 --- New version --- v4.0
 
 ###To adjust the sorting order, see the aDFOrder function (approximately line 142). No further changes were made beyond this point at the time of writing
@@ -111,5 +119,6 @@ added options menu frame
 rewrote the core
 
 --- aDF 1.0
+
 
 First release
