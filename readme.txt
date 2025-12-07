@@ -1,9 +1,57 @@
 ## aDF - a small frame that shows armor and few debuffs on your target.
 ## Author: Atreyyo @ Vanillagaming.org
-## Contributor: Autignem version v4.0
+## Contributor: Autignem version v4.x <-- rework/rewrite
 ######################################
 
-*** Always delete aDF.lua in the WTF folder when updating this addon, or if you are unsure where to find it, delete entire WTF folder.
+## 🔄 UPDATE INSTRUCTIONS - READ CAREFULLY!!!!!!!
+
+### ⚠️⚠️⚠️ **BEFORE YOU START - IMPORTANT WARNING: ** ⚠️⚠️⚠️
+**DO NOT DELETE YOUR ENTIRE WTF FOLDER!**  
+Following these instructions incorrectly can make you lose ALL settings for ALL your addons.
+
+### **STEP-BY-STEP GUIDE:**
+
+#### **1. EXIT WORLD OF WARCRAFT COMPLETELY**
+- Close WoW to desktop (don't just `/reload`)
+- This allows SavedVariables to save properly
+
+#### **2. FIND YOUR CORRECT WTF FOLDER**
+Navigate to **ONE** of these paths:
+
+**For Vanilla WoW 1.12.1 **
+World of Warcraft/WTF/Account/[YOUR_ACCOUNT]/SavedVariables/
+
+*(Replace `[YOUR_ACCOUNT]` with your actual account/email name)*
+
+#### **3. DELETE ONLY THESE 2 FILES:**
+Inside the `SavedVariables/` folder, find and delete:
+- 📄 `aDF.lua` ← DELETE THIS ONE
+- 📄 `aDF.lua.bak` ← DELETE THIS TOO (if it exists)
+
+**DO NOT DELETE ANY OTHER FILES IN THIS FOLDER!**
+
+#### **4. INSTALL NEW aDF v4.0:**
+1. Delete old addon folder: `Interface/AddOns/aDF/`
+2. Extract new v4.0 files to: `Interface/AddOns/aDF/`
+
+#### **5. LAUNCH WORLD OF WARCRAFT**
+- Start WoW normally
+- aDF v4.0 will create fresh configuration files
+- Use `/adf options` to configure your settings
+
+---
+
+### **❌ WHAT NOT TO DO:**
+- ❌ **NEVER delete the entire WTF folder** (this would delete ALL addon settings)
+- ❌ Don't just overwrite old files (causes conflicts)
+- ❌ Don't skip deleting SavedVariables (will cause errors)
+- ❌ Don't update while WoW is running
+
+### **✅ WHAT TO DO IF YOU MAKE A MISTAKE:**
+If you accidentally delete wrong files:
+1. Check Windows Recycle Bin
+2. Restore any non-aDF files you deleted
+3. Other addons will recreate their settings when you launch WoW
 
 --- New version --- v4.1
 
@@ -122,3 +170,4 @@ rewrote the core
 
 
 First release
+
