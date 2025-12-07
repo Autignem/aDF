@@ -1,6 +1,6 @@
 --########### armor/resistance and Debuff Frame
 --########### By Atreyyo @ Vanillagaming.org <--original
---########### Contributor: Autignem <--reworked
+--########### Contributor: Autignem <--reworked/rewrite
 
 -- order of sections:
 -- 1. FRAME INITIALIZATION
@@ -31,10 +31,59 @@ aDF:RegisterEvent("PLAYER_TARGET_CHANGED")
 
 -- ==== GLOBAL VARIABLES AND STORAGE ==== Variables globales y tablas
 
+-- Performance locals
+
+local _G = _G
+local ipairs, pairs, type, tostring, tonumber = ipairs, pairs, type, tostring, tonumber
+
+-- WoW API functions
+
+local UnitDebuff = UnitDebuff
+local UnitBuff = UnitBuff
+local UnitExists = UnitExists
+local UnitCanAttack = UnitCanAttack
+local UnitIsPlayer = UnitIsPlayer
+local UnitIsDead = UnitIsDead
+local UnitAffectingCombat = UnitAffectingCombat
+local UnitResistance = UnitResistance
+local UnitName = UnitName
+local GetTime = GetTime
+local SendChatMessage = SendChatMessage
+
+-- Math functions
+
+local floor, abs = math.floor, math.abs
+
+-- Table functions
+
+local tinsert, tsort = table.insert, table.sort
+
+-- WoW globals
+
+local UIParent = UIParent
+local DEFAULT_CHAT_FRAME = DEFAULT_CHAT_FRAME
+local GameTooltip = GameTooltip
+local PlaySound = PlaySound
+
+-- Throttle variables
+
+local lastIconUpdate = 0
+local ICON_UPDATE_THROTTLE = 0.5
+local lastAuraTime = 0
+local pendingUpdate = false
+
+-- Containers, this help fps
+
 aDF_frames = {} -- Container for all debuff frame elements
 aDF_guiframes = {} -- Container for all GUI checkbox elements
 gui_Options = gui_Options or {} -- Checklist options storage
 gui_Optionsxy = gui_Optionsxy or 1 -- Size scaling factor
+gui_showArmorBackground = gui_showArmorBackground or 1
+gui_showArmorText = gui_showArmorText or 1
+gui_showResText = gui_showResText or 1
+gui_announceArmorDrop = gui_announceArmorDrop or nil
+gui_chan = gui_chan or "Say"
+aDF_x, aDF_y = aDF_x or 0, aDF_y or 0
 local last_target_change_time = GetTime() -- Timing for target changes
 
 -- Chat channel options
@@ -49,15 +98,12 @@ gui_chantbl = {
 -- ==== DATA TABLES: SPELLS AND DEBUFFS ==== Esta es la tabla de datos de debuffs
 
 -- Translation table for debuff check on target
-
 aDFSpells = {
-
 	--armor
-
 	["Expose Armor"] = "Expose Armor",
 	["Sunder Armor"] = "Sunder Armor",
 	["Curse of Recklessness"] = "Curse of Recklessness",
-	["Faerie Fire"] = "Faerie Fire",
+	["Faerie Fire"] = {"Faerie Fire", "Faerie Fire (Feral)"},
 	["Decaying Flesh"] = "Decaying Flesh", --x3=400
 	["Feast of Hakkar"] = "Feast of Hakkar", --400
 	["Cleave Armor"] = "Cleave Armor", --300
@@ -67,7 +113,6 @@ aDFSpells = {
 	["Crooked Claw"] = "Crooked Claw", --scythe pet 2% melee
 
 	--spells
-
 	["Judgement of Wisdom"] = "Judgement of Wisdom",
 	["Curse of Shadows"] = "Curse of Shadow",
 	["Curse of the Elements"] = "Curse of the Elements",
@@ -77,11 +122,8 @@ aDFSpells = {
 }
 
 -- Table with debuff names and their icon textures
-
 aDFDebuffs = {
-
 	--armor
-
 	["Expose Armor"] = "Interface\\Icons\\Ability_Warrior_Riposte",
 	["Sunder Armor"] = "Interface\\Icons\\Ability_Warrior_Sunder",
 	["Faerie Fire"] = "Interface\\Icons\\Spell_Nature_FaerieFire",
@@ -90,11 +132,10 @@ aDFDebuffs = {
 	["Cleave Armor"] = "Interface\\Icons\\Ability_Warrior_Savageblow", --300
 	["Feast of Hakkar"] = "Interface\\Icons\\Spell_Shadow_Bloodboil", --250
 	["Holy Sunder"] = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras", --50
-	["Gift of Arthas"] = "Interface\\Icons\\Spell_Shadow_FingerOfDeath", --arthas gift
+	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
 	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
 
 	--spells
-
 	["Curse of Shadows"] = "Interface\\Icons\\Spell_Shadow_CurseOfAchimonde",
 	["Curse of the Elements"] = "Interface\\Icons\\Spell_Shadow_ChillTouch",
 	["Nightfall"] = "Interface\\Icons\\Spell_Holy_ElunesGrace",
@@ -107,12 +148,11 @@ aDFDebuffs = {
 -- ==== DATA TABLE: ARMOR VALUES ==== Aqui declaramos los valores de reduccion de armadura
 
 -- Armor reduction values by damage amount (identifies which debuff was applied)
-
 aDFArmorVals = {
 	[90]   = "Sunder Armor x1", -- r1 x1
 	[180]  = "Sunder Armor",    -- r2 x1, or r1 x2
 	[270]  = "Sunder Armor",    -- r3 x1, or r1 x3
-	[54023]  = "Sunder Armor",    -- r3 x2, or r2 x3
+	[540]  = "Sunder Armor",    -- r3 x2, or r2 x3
 	[810]  = "Sunder Armor x3", -- r3 x3
 	[360]  = "Sunder Armor",    -- r4 x1, or r1 x4 or r2 x2
 	[720]  = "Sunder Armor",    -- r4 x2, or r2 x4
@@ -154,11 +194,8 @@ aDFArmorVals = {
 -- ==== DATA TABLE: DEBUFF ORDER ===== Aqui declaramos el orden de los debuffs en pantalla y como aparecen
 
 -- Display order of debuffs (Left → Right, Top → Bottom)
-
 aDFOrder = {
-
 	--armor/melee
-
     "Expose Armor",
     "Sunder Armor", --2200
     "Curse of Recklessness",
@@ -172,7 +209,6 @@ aDFOrder = {
 	"Crooked Claw", --scythe pet
 
 	--spells/caster
-
     "Judgement of Wisdom",
     "Curse of Shadows",
     "Curse of the Elements",
@@ -205,7 +241,6 @@ end
 -- ==== DEBUFF FRAME CREATION ==== Funciones de creacion de frames de los debuffs
 
 -- Creates the debuff frame elements
--- Crea los elementos del marco de debuffs, los iconos son individuales
 
 function aDF.Create_frame(name)
 	local frame = CreateFrame('Button', name, aDF)
@@ -225,7 +260,6 @@ function aDF.Create_frame(name)
 end
 
 -- Creates GUI checkboxes for debuff selection in options panel
--- Crea casillas de verificación de GUI para la selección de debuff en el panel de opciones
 
 function aDF.Create_guiframe(name)
 	local frame = CreateFrame("CheckButton", name, aDF.Options, "UICheckButtonTemplate")
@@ -245,7 +279,6 @@ function aDF.Create_guiframe(name)
 		GameTooltip:SetText(name, 255, 255, 0, 1, 1);
 		GameTooltip:Show()
 	end)
-
 	frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	frame:SetChecked(guiOptions[name])
 	frame.Icon = frame:CreateTexture(nil, 'ARTWORK')
@@ -274,8 +307,6 @@ function aDF:Init()
 	end
 	
 	-- Backdrop styling for armor panel
-	-- Estilo de fondo para el panel de armadura, aqui es dodne va el numero de la armadura
-
 	local backdrop = {
 			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
 			bgFile = "Interface/Tooltips/UI-Tooltip-Background",
@@ -399,91 +430,96 @@ function aDF:Init()
 	end
 end
 
--- ==== UPDATE FUNCTIONS ==== Funciones de actualizacion dentro de los diferentes bloques
-
--- Main update function for armor/resistance display and debuff icon states
+-- ==== UPDATE FUNCTIONS ==== Funciones de actualizacion. Main update function for armor/resistance display and debuff icon states
 
 function aDF:Update()
-	if aDF_target ~= nil and UnitExists(aDF_target) and not UnitIsDead(aDF_target) then
-		if aDF_target == 'targettarget' and GetTime() < (last_target_change_time + 1.3) then
-			return
-		end
-		local armorcurr = UnitResistance(aDF_target,0)
-		
-		-- Update armor text display
 
-		if gui_showArmorText == 1 then
-			aDF.armor:SetText(armorcurr)
-		else
-			aDF.armor:SetText("")
-		end
-		
-		-- Announce armor drops
-		-- Anuncia cuando al armadura cae, realmente dice cuando un debuff se peirde y sube la armadura, pero si usas < en vez de >,
-		-- marca el aviso como 30000 y la armadura y lueog dice la armadura real, puede dar mucho spawn.
-
-		if armorcurr > aDF_armorprev then
-			local armordiff = armorcurr - aDF_armorprev
-			local diffreason = ""
-			if aDF_armorprev ~= 0 and aDFArmorVals[armordiff] then
-				diffreason = " (Dropped " .. aDFArmorVals[armordiff] .. ")"
-			end
-			local msg = UnitName(aDF_target).."'s armor: "..aDF_armorprev.." -> "..armorcurr..diffreason
-			
-			if aDF_target == 'target' and gui_announceArmorDrop == 1 then
-				SendChatMessage(msg, gui_chan)
-			end
-		end
-		aDF_armorprev = armorcurr
-
-		-- Update resistance text display
-
-		if gui_showResText == 1 then
-			aDF.res:SetText("|cffFF0000 "..UnitResistance(aDF_target,2).." |cffADFF2F "..UnitResistance(aDF_target,3).." |cff4AE8F5 "..UnitResistance(aDF_target,4).." |cff9966CC "..UnitResistance(aDF_target,5).." |cffFEFEFA "..UnitResistance(aDF_target,6))
-		else
-			aDF.res:SetText("")
-		end
-		
-		-- Update debuff icon states
-
-		for i,v in pairs(guiOptions) do
-			if aDF:GetDebuff(aDF_target,aDFSpells[i]) then
-				aDF_frames[i]["icon"]:SetAlpha(1)
-				if aDF:GetDebuff(aDF_target,aDFSpells[i],1) > 1 then
-					aDF_frames[i]["nr"]:SetText(aDF:GetDebuff(aDF_target,aDFSpells[i],1))
-				end
-			else
-				aDF_frames[i]["icon"]:SetAlpha(0.3)
-				aDF_frames[i]["nr"]:SetText("")
-			end		
-		end
-	else
+	if not aDF_target or not UnitExists(aDF_target) or UnitIsDead(aDF_target) then
 		aDF.armor:SetText("")
 		aDF.res:SetText("")
 		for i,v in pairs(guiOptions) do
-			aDF_frames[i]["icon"]:SetAlpha(0.3)
-			aDF_frames[i]["nr"]:SetText("")
+			aDF_frames[i].icon:SetAlpha(0.3)
+			aDF_frames[i].nr:SetText("")
+		end
+		return
+	end
+	
+	-- Throttle para targettarget
+
+	if aDF_target == 'targettarget' and GetTime() < (last_target_change_time + 1.3) then
+		return
+	end
+	
+	local armorcurr = UnitResistance(aDF_target,0)
+	
+	-- update armor text display
+
+	if gui_showArmorText == 1 then
+		aDF.armor:SetText(armorcurr)
+	else
+		aDF.armor:SetText("")
+	end
+	
+	-- 4. Cache para resistencias, solo cada 2 segundos
+
+	local now = GetTime()
+	if not self.lastResUpdate or (now - self.lastResUpdate) > 2 then
+		if gui_showResText == 1 then
+
+			-- Concatenación directa, se usa para evitar un string.format 
+
+			local fire = UnitResistance(aDF_target,2)
+			local nature = UnitResistance(aDF_target,3)
+			local frost = UnitResistance(aDF_target,4)
+			local shadow = UnitResistance(aDF_target,5)
+			local arcane = UnitResistance(aDF_target,6)
+			aDF.res:SetText("|cffFF0000 "..fire.." |cffADFF2F "..nature.." |cff4AE8F5 "..frost.." |cff9966CC "..shadow.." |cffFEFEFA "..arcane)
+		else
+			aDF.res:SetText("")
+		end
+		self.lastResUpdate = now
+	end
+	
+	-- Announce armor drops
+
+	if armorcurr > aDF_armorprev then
+		local armordiff = armorcurr - aDF_armorprev
+		local diffreason = ""
+		if aDF_armorprev ~= 0 and aDFArmorVals[armordiff] then
+			diffreason = " (Dropped " .. aDFArmorVals[armordiff] .. ")"
+		end
+		local msg = UnitName(aDF_target).."'s armor: "..aDF_armorprev.." -> "..armorcurr..diffreason
+		
+		if aDF_target == 'target' and gui_announceArmorDrop == 1 then
+			SendChatMessage(msg, gui_chan)
 		end
 	end
-end
+	aDF_armorprev = armorcurr
 
--- Update check function (throttled update)
+	-- Update debuff icon states, use basic throttling
+	now = GetTime()
+    
+    -- Solo actualizar íconos cada 500ms máximo
 
-function aDF:UpdateCheck()
-	if utimer == nil or (GetTime() - utimer > 0.8) and UnitIsPlayer("target") then
-		utimer = GetTime()
-		aDF:Update()
+    if now - lastIconUpdate > ICON_UPDATE_THROTTLE then
+        lastIconUpdate = now
+        
+        for debuffName, _ in pairs(guiOptions) do
+            local frame = aDF_frames[debuffName]
+        	local hasDebuff = aDF:GetDebuff(aDF_target, aDFSpells[debuffName])
+        	local stacks = hasDebuff and aDF:GetDebuff(aDF_target, aDFSpells[debuffName], 1) or 0
+            
+            frame.icon:SetAlpha(hasDebuff and 1 or 0.3)
+            frame.nr:SetText((stacks > 1) and tostring(stacks) or "")
+        end
 	end
 end
 
--- ==== SORT & POSITIONING ==== Este es el bloque que posiciona los iconos
-
--- Sort function to show/hide frames and position them correctly
+-- ==== SORT & POSITIONING ==== Este es el bloque que posiciona los iconos. Sort function to show/hide frames and position them correctly
 
 function aDF:Sort()
 
     -- Show or hide debuff frames
-	-- Muestra u oculta los marcos de debuffs
 
     for name,_ in pairs(aDFDebuffs) do
         if guiOptions[name] == nil then
@@ -494,7 +530,6 @@ function aDF:Sort()
     end
 
     -- Build ordered list from aDFOrder
-	-- Construye la lista ordenada desde aDFOrder que esta declarada en la linea 142
 
     local ordered = {}
     for _, debuffName in ipairs(aDFOrder) do
@@ -520,7 +555,7 @@ function aDF:Sort()
         else
     		-- Third row
 			frame:SetPoint("BOTTOMLEFT", aDF, "BOTTOMLEFT", size * ((index - 1) - 14), -(size * 3))
-			-- Teoricamente se podrian añadir filas infinitas o configurar cuantos iconos por fila, lo dejo por defecto como esta en el addom
+			-- Teoricamente, se podrian añadir filas infinitas con esta logica.
 		end
     end
 end
@@ -529,56 +564,66 @@ end
 -- Se vera que se usa Debuff y Buff. Esto es porque cuando se alcanza el tope de 16 debuff, internamente para el servidor se usa los slot 
 -- de buff para poner mas debuff, por lo que hay que revisar ambos.Tambien pueden existir 16 debuff o buff mas, pero esos se pieden en el servidor
 -- y el cliente no los detecta
+-- Vanilla has a 16 debuff limit on UI. When exceeded, the server places additional debuffs in BUFF slots (but they're still debuffs).
+-- Therefore we must check both UnitDebuff() AND UnitBuff(). There's also a total 48 effect limit (16 debuffs + 32 buffs).
+-- Any effects beyond this are LOST SERVER-SIDE and undetectable by client (16 slots). Tooltip scanning required because debuff names in API are localized.
 
 -- Check unit for a specific debuff/buff and optional stacks
 
-function aDF:GetDebuff(name,buff,stacks)
-	local a=1
-	
-	-- Check debuffs first
+function aDF:GetDebuff(name, buff, wantStacks)
 
-	while UnitDebuff(name,a) do
-		local _, s = UnitDebuff(name,a)
-		aDF_tooltip:SetOwner(UIParent, "ANCHOR_NONE");
-		aDF_tooltip:ClearLines()
-		aDF_tooltip:SetUnitDebuff(name,a)
-		local aDFtext = aDF_tooltipTextL:GetText()
-		if string.find(aDFtext,buff) then 
-			if stacks == 1 then
-				return s
-			else
-				return true 
-			end
-		end
-		a=a+1
-	end
-	
-	-- Check buffs if not found in debuffs
-
-	a=1
-	while UnitBuff(name,a) do
-		local _, s = UnitBuff(name,a)
-		aDF_tooltip:SetOwner(UIParent, "ANCHOR_NONE");
-		aDF_tooltip:ClearLines()
-		aDF_tooltip:SetUnitBuff(name,a)
-		local aDFtext = aDF_tooltipTextL:GetText()
-		if string.find(aDFtext,buff) then 
-			if stacks == 1 then
-				return s
-			else
-				return true 
-			end
-		end
-		a=a+1
-	end
-	
-	return false
+    if not name or not UnitExists(name) then
+        if wantStacks then
+            return false, 0
+        else
+            return false
+        end
+    end
+    
+    local function CheckAura(auraFunc)
+        local a = 1
+        while auraFunc(name, a) do
+            local _, stacks = auraFunc(name, a)
+            aDF_tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+            aDF_tooltip:ClearLines()
+            if auraFunc == UnitDebuff then
+                aDF_tooltip:SetUnitDebuff(name, a)
+            else
+                aDF_tooltip:SetUnitBuff(name, a)
+            end
+            local aDFtext = aDF_tooltipTextL:GetText()
+            
+            if type(buff) == "table" then
+                for _, buffName in ipairs(buff) do
+                    if aDFtext and string.find(aDFtext, buffName) then
+                        return true, stacks
+                    end
+                end
+            else
+                if aDFtext and string.find(aDFtext, buff) then
+                    return true, stacks
+                end
+            end
+            a = a + 1
+        end
+        return false, 0
+    end
+    
+    local found, stacks = CheckAura(UnitDebuff)
+    if not found then
+        found, stacks = CheckAura(UnitBuff)
+    end
+    
+    if wantStacks then
+        return stacks
+    else
+        return found
+    end
 end
 
 -- ==== OPTIONS FRAME & UI ==== Aqui se crea el frame de opciones y su UI
 
 function aDF.Options:Gui()
-
 	aDF.Options.Drag = { }
 	function aDF.Options.Drag:StartMoving()
 		this:StartMoving()
@@ -615,7 +660,6 @@ function aDF.Options:Gui()
 	self:SetBackdropColor(0,0,0,1);
 	
 	-- ESC key handling: add to UISpecialFrames for automatic close
-	-- Cuando usamos ESC, se cierra el frame de opciones y guarda los cambios
 
 	tinsert(UISpecialFrames, "aDF_Options")
 	
@@ -644,11 +688,7 @@ function aDF.Options:Gui()
 	self.right:SetTexture(1, 1, 0, 1)
 	self.right:SetGradientAlpha("Horizontal", 255, 255, 0, 0.6, 0, 0, 0, 0)
 	
-	-- ==== TAB SYSTEM ==== Aqui esta el sistema de pestañas dentro del aDF_Options. 
-	-- Usamos la pestaña de notificaciones como centro, y a partir de ella centramos las otras 2 simetricamente
-
-	-- Definimos el tamaño de los botones de pestañas y su espacio
-
+	-- ==== TAB SYSTEM ====
 	local tabHeight = 30
 	local tabWidth = 100
 	local tabSpacing = 5
@@ -657,7 +697,8 @@ function aDF.Options:Gui()
 	self.tabContents = {}
 	
 	-- Tab 2: Notifications (CENTER)
-	-- Si queremos mover las pestañas, debemos modificar unicamente este valor, el resto son espejos
+	-- Center tab is created first for easier positioning of left/right tabs
+	-- Lo usamos como centro para encuadrar el resto debemos usar este como referencia
 
 	self.tabs[2] = CreateFrame("Button", "aDF_Tab_Notifications", self, "GameMenuButtonTemplate")
 	self.tabs[2]:SetPoint("TOP", self, "TOP", 0, -100)
@@ -694,7 +735,7 @@ function aDF.Options:Gui()
 	end)
 	
 	-- ==== TAB 1: DISPLAY (LEFT) ====
-	
+
 	self.tabContents[1] = CreateFrame("Frame", nil, self)
 	self.tabContents[1]:SetWidth(560)
 	self.tabContents[1]:SetHeight(420)
@@ -804,7 +845,7 @@ function aDF.Options:Gui()
 	end)
 	
 	-- ==== TAB 2: NOTIFICATIONS (CENTER) ====
-	
+
 	self.tabContents[2] = CreateFrame("Frame", nil, self)
 	self.tabContents[2]:SetWidth(560)
 	self.tabContents[2]:SetHeight(420)
@@ -822,9 +863,10 @@ function aDF.Options:Gui()
 
 	self.armorDropCheckbox:SetChecked(gui_announceArmorDrop == 1)
 
+	-- Sin esto no funcioan el checkbox correctamente
+	
 	self.armorDropCheckbox:SetScript("OnClick", function()
 		gui_announceArmorDrop = self.armorDropCheckbox:GetChecked() and 1 or nil
-		aDF_announceArmorDrop = gui_announceArmorDrop
 	end)
 
 	self.armorDropCheckbox:SetScript("OnEnter", function()
@@ -863,8 +905,7 @@ function aDF.Options:Gui()
 	UIDropDownMenu_Initialize(chandropdown, InitializeDropdown)
 	
 	-- ==== TAB 3: DEBUFFS (RIGHT) ====
-	-- El orden de los debuffs se define en la tabla aDFOrder en la linea 142, usa la misma logica que el aDFFrames para definir el orden
-	
+
 	self.tabContents[3] = CreateFrame("Frame", nil, self)
 	self.tabContents[3]:SetWidth(560)
 	self.tabContents[3]:SetHeight(420)
@@ -897,7 +938,7 @@ function aDF.Options:Gui()
 	end
 	
 	-- ==== TAB SELECTION FUNCTION ====
-	
+
 	function aDF.Options:SelectTab(tabIndex)
 		for i = 1, 3 do
 			if i == tabIndex then
@@ -912,12 +953,11 @@ function aDF.Options:Gui()
 	end
 	
 	-- Show third tab by default
-	-- Muestra la tercera pestaña, debuff por defecto
 
 	self:SelectTab(3)
 	
 	-- ==== DONE BUTTON ====
-	
+
 	self.dbutton = CreateFrame("Button",nil,self,"UIPanelButtonTemplate")
 	self.dbutton:SetPoint("BOTTOM",0,10)
 	self.dbutton:SetFrameStrata("LOW")
@@ -929,58 +969,106 @@ function aDF.Options:Gui()
 end
 
 -- ==== EVENT HANDLING ==== Aqui se manejan los eventos principales
+-- 1. ADDON_LOADED --> Initialize saved variables, create frames
+-- 2. PLAYER_TARGET_CHANGED --> Set aDF_target (target or targettarget)
+-- 3. UNIT_AURA (throttled) --> Update debuffs if for our target
+-- 4. (No OnUpdate!) --> Pure event-driven architecture
 
 -- Main event handler
-
 function aDF:OnEvent()
-	if event == "ADDON_LOADED" and arg1 == "aDF" then
-		aDF_Default()
-		aDF_target = nil
-		aDF_armorprev = 30000
-		if gui_chan == nil then gui_chan = Say end
-		if gui_announceArmorDrop ~= 1 then 
-			gui_announceArmorDrop = nil
-		end
-		if gui_showArmorBackground == nil then
-			gui_showArmorBackground = 1
-		end
-		if gui_showArmorText == nil then
-			gui_showArmorText = 1
-		end
-		if gui_showResText == nil then
-			gui_showResText = 1
-		end
-		aDF:Init()
-		aDF.Options:Gui()
-		aDF_announceArmorDrop = gui_announceArmorDrop
-		aDF:Sort()
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r Loaded",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 You can move the debuff icons by holding Shift and clicking on them",1,1,1)
-	end
-	if event == "UNIT_AURA" then
-		aDF:Update()
-	end
-	if event == "PLAYER_TARGET_CHANGED" then
-		aDF_target = nil
-		last_target_change_time = GetTime()
-		if UnitIsPlayer("target") then
-			aDF_target = "targettarget"
-		end
-		if UnitCanAttack("player", "target") then
-			aDF_target = "target"
-		end
-		aDF_armorprev = 30000
-		aDF:Update()
-	end
+
+	-- ==== ADDON LOADED ====
+
+    if event == "ADDON_LOADED" and arg1 == "aDF" then
+        aDF_Default()
+        aDF_target = nil
+        aDF_armorprev = 30000
+        aDF.lastResUpdate = 0
+        if gui_chan == nil then gui_chan = "Say" end
+        if gui_announceArmorDrop ~= 1 then 
+            gui_announceArmorDrop = nil
+        end
+        if gui_showArmorBackground == nil then
+            gui_showArmorBackground = 1
+        end
+        if gui_showArmorText == nil then
+            gui_showArmorText = 1
+        end
+        if gui_showResText == nil then
+            gui_showResText = 1
+        end
+        aDF:Init()
+        aDF.Options:Gui()
+        aDF:Sort()
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r Loaded",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 You can move the debuff icons by holding Shift and clicking on them",1,1,1)
+        return
+    end
+    
+    -- ==== THROTTLE PARA UNIT_AURA ====
+	-- UNIT_AURA fires VERY frequently, on every aura application/removal. Cause we need throttling
+
+    if event == "UNIT_AURA" then
+
+        -- Solo nuestro target o player
+
+        if arg1 ~= aDF_target and not (arg1 == "player" and aDF_target == "targettarget") then
+            return
+        end
+        
+        local now = GetTime()
+
+        -- Si pasó más de 500ms desde la última actualización, actualizar inmediatamente
+		-- If more than 500ms have passed since the last update, update immediately
+
+        if now - lastAuraTime > 0.5 then
+            aDF:Update()
+            lastAuraTime = now
+            pendingUpdate = false
+        else
+            -- Marcar que hay update pendiente
+            pendingUpdate = true
+        end
+        return
+    end
+    
+    -- ==== ACTIONS ON OTHER EVENTS ====
+
+    if pendingUpdate and GetTime() - lastAuraTime > 0.5 then
+        aDF:Update()
+        lastAuraTime = GetTime()
+        pendingUpdate = false
+    end
+    
+    if event == "PLAYER_TARGET_CHANGED" then
+
+        -- Limpiar estado pendiente
+		-- Clear pending state
+
+        pendingUpdate = false
+        
+        aDF_target = nil
+        last_target_change_time = GetTime()
+        if UnitIsPlayer("target") then
+            aDF_target = "targettarget"
+        end
+        if UnitCanAttack("player", "target") then
+            aDF_target = "target"
+        end
+        aDF_armorprev = 30000
+        aDF:Update()
+        return
+    end
 end
 
--- ==== SCRIPT REGISTRATION ==== Aqui se registran los scripts principales, por el amor de dios no lo toques
+-- ==== SCRIPT REGISTRATION ==== 
+-- Aqui se registran los scripts principales, por el amor de dios no lo toques, si se borra se jode todo el addom, es codigo de herencia
+-- This is legacy code, please do not modify or remove it. If you delete or comment aDF:SetScript("OnEvent", aDF.OnEvent), the addon will break.
 
 aDF:SetScript("OnEvent", aDF.OnEvent)
-aDF:SetScript("OnUpdate", aDF.UpdateCheck)
 
 -- ==== SLASH COMMANDS ==== Aqui definimos los comandos de /adf
 
@@ -1007,4 +1095,3 @@ end
 SlashCmdList['ADF_SLASH'] = aDF.slash
 SLASH_ADF_SLASH1 = '/adf'
 SLASH_ADF_SLASH2 = '/ADF'
-
