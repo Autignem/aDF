@@ -48,12 +48,12 @@ This version can see in https://github.com/Autignem/aDF/issues. Pull request are
 
 ### Current Development & Maintenance
 
-**Autignem** - Complete v4.x rewrite from scratch and performance optimization
+- **Autignem** - Complete v4.x rewrite from scratch and performance optimization
 
 ### Original Concept & Legacy Versions
 
-**Atreyyo @ Vanillagaming.org** - Original aDF concept and v1.0-3.0 (2006)  
-**Zebouski** - Previous maintenance and updates. See originaL in https://github.com/Zebouski/aDF/ 
-**Goffauxs** - Code contributions and improvements
+- **Atreyyo @ Vanillagaming.org** - Original aDF concept and v1.0-3.0 (2006)  
+- **Zebouski** - Previous maintenance and updates. See originaL in https://github.com/Zebouski/aDF/ 
+- **Goffauxs** - Code contributions and improvements
 
 Last version developed Zebouski
