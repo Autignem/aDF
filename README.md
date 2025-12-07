@@ -21,6 +21,8 @@ aDF is a **complete rewrite** of the classic armor/debuff tracking addon, specif
 
 <img width="560" height="771" alt="adf_1" src="https://github.com/user-attachments/assets/f6ca1fde-ae0b-4e1d-9ff5-ad206e3f1cec" />
 
+------
+
 <img width="249" height="168" alt="adf_2" src="https://github.com/user-attachments/assets/d0eb3ac4-b37e-45d2-aa0f-3c4e34827876" />
 
 ## Features
