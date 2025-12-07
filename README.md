@@ -36,9 +36,9 @@ aDF is a **complete rewrite** of the classic armor/debuff tracking addon, specif
 
 ### Basic Commands
 
-/adf show - Show the HUD
-/adf hide - Hide the HUD
-/adf options - Open configuration panel
+- /adf show - Show the HUD
+- /adf hide - Hide the HUD
+- /adf options - Open configuration panel
 
 ## Known issues
 
