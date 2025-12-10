@@ -352,7 +352,7 @@ function aDF:Init()
 	self.armor = self:CreateFontString(nil, "OVERLAY")
     self.armor:SetPoint("CENTER", self, "CENTER", 0, 0)
     self.armor:SetFont("Fonts\\FRIZQT__.TTF", 18+gui_Optionsxy)
-    self.armor:SetText("aDF")
+    self.armor:SetText("Armor")
 
 	-- Resistance text display
 
@@ -1095,3 +1095,4 @@ end
 SlashCmdList['ADF_SLASH'] = aDF.slash
 SLASH_ADF_SLASH1 = '/adf'
 SLASH_ADF_SLASH2 = '/ADF'
+
