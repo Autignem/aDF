@@ -15,6 +15,12 @@ World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/SavedVariables/
 5. Launch WoW - fresh config will be created
 
 **⚠️ WARNING:** Never delete your entire WTF folder! This would lose ALL addon settings.
+
+**⚠️ CRITICAL CLEANUP STEP:
+Search for any other aDF.lua files in your SavedVariables folders. They can sometimes be orphaned in server-specific or even character-specific paths, like:
+World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/[Server]/[YOUR_CHARACTER]/SavedVariables
+Delete all of them to ensure a clean reset.
+
 ** More info in Readme.txt **
 
 aDF is a **complete rewrite** of the classic armor/debuff tracking addon, specifically optimized on Turtle WoW. It displays critical defensive information about your target in a lightweight, efficient HUD.
