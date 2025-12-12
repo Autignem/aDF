@@ -16,7 +16,7 @@ World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/SavedVariables/
 
 **⚠️ WARNING:** Never delete your entire WTF folder! This would lose ALL addon settings.
 
-###⚠️ CRITICAL CLEANUP STEP: <br>
+### CRITICAL CLEANUP STEP ⚠️: <br>
 
 Search for any other aDF.lua files in your SavedVariables folders. They can sometimes be orphaned in server-specific or even character-specific paths, like:
 World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/[Server]/[YOUR_CHARACTER]/SavedVariables
