@@ -6,7 +6,7 @@ aDF v4.0 is a **complete codebase rewrite** with different data structures. You 
 
 #### Step-by-Step Update Guide:
 1. **Exit WoW completely** (to desktop, not just `/reload`)
-2. Navigate to your WTF folder:
+2. Navigate to your WTF folder: <br>
 World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/SavedVariables/
 3. Delete **ONLY** these 2 files:
 - `aDF.lua`
@@ -16,7 +16,7 @@ World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/SavedVariables/
 
 **⚠️ WARNING:** Never delete your entire WTF folder! This would lose ALL addon settings.
 
-⚠️ CRITICAL CLEANUP STEP: 
+⚠️ CRITICAL CLEANUP STEP: <br>
 Search for any other aDF.lua files in your SavedVariables folders. They can sometimes be orphaned in server-specific or even character-specific paths, like:
 World of Warcraft/Turtle WoW/WTF/Account/[YOUR_ACCOUNT]/[Server]/[YOUR_CHARACTER]/SavedVariables
 Delete all of them to ensure a clean reset.
