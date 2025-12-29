@@ -1,27 +1,42 @@
---########### armor/resistance and Debuff Frame
---########### By Atreyyo @ Vanillagaming.org <--original
---########### Contributor: Autignem <--reworked/rewrite
+---########### armor/resistance and Debuff Frame
+-- ########### By Atreyyo @ Vanillagaming.org <--original
+-- ########### Contributor: Autignem <--reworked/rewrite
+-- ########### Version 4.2
 
 -- order of sections:
 -- 1. FRAME INITIALIZATION
 -- 2. GLOBAL VARIABLES AND STORAGE
+-- 2.1 CENTRALIZED CONFIGURATION SYSTEM
+-- 2.2 VARIABLES RUNTIME
 -- 3. DATA TABLES: SPELLS AND DEBUFFS
 -- 4. DATA TABLE: ARMOR VALUES
 -- 5. DATA TABLE: DEBUFF ORDER
 -- 6. UTILITY FUNCTIONS
 -- 7. DEBUFF FRAME CREATION
 -- 8. MAIN ARMOR/RESISTANCE FRAME
+-- 8.1 Armor frame
+-- 8.2 Resistance frame
+-- 8.3 Debuff frame
 -- 9. UPDATE FUNCTIONS
 -- 10. SORT & POSITIONING
 -- 11. DEBUFF DETECTION
 -- 12. OPTIONS FRAME & UI
+-- 12.1 Options GUI
+-- 12.2 Tab system (Display / Notifications / Debuffs)
+-- 12.3 Display tab: slider, numeric input, +/- buttons
 -- 13. EVENT HANDLING
+-- 13.1 ADDON_LOADED and initialization
+-- 13.2 UNIT_AURA throttle and target changes
 -- 14. SCRIPT REGISTRATION
+-- 15. SLASH COMMANDS
 
--- ==== FRAME INITIALIZATION ==== Aqui declaramos los frames principales
+-- ==== FRAME INITIALIZATION ==== 
+-- Use a distinct global name for the options frame so it doesn't collide with the
+-- SavedVariables table `aDF_Options`. UISpecialFrames expects a Frame, not a table.
+-- Now the aDF.lua in savedvariables only contains the configuration data.
 
 aDF = CreateFrame('Button', "aDF", UIParent) -- Main event frame
-aDF.Options = CreateFrame("Frame","aDF_Options",UIParent) -- Options frame (global name for UISpecialFrames ESC handling)
+aDF.Options = CreateFrame("Frame","aDF_OptionsFrame",UIParent) -- Options frame (global name for UISpecialFrames ESC handling)
 
 -- Register events
 
@@ -29,7 +44,7 @@ aDF:RegisterEvent("ADDON_LOADED")
 aDF:RegisterEvent("UNIT_AURA")
 aDF:RegisterEvent("PLAYER_TARGET_CHANGED")
 
--- ==== GLOBAL VARIABLES AND STORAGE ==== Variables globales y tablas
+-- ==== GLOBAL VARIABLES AND STORAGE ====
 
 -- Performance locals
 
@@ -52,7 +67,11 @@ local SendChatMessage = SendChatMessage
 
 -- Math functions
 
-local floor, abs = math.floor, math.abs
+local floor = math.floor
+local abs = math.abs
+local ceil = math.ceil
+local min = math.min
+local mod = math.mod
 
 -- Table functions
 
@@ -65,41 +84,197 @@ local DEFAULT_CHAT_FRAME = DEFAULT_CHAT_FRAME
 local GameTooltip = GameTooltip
 local PlaySound = PlaySound
 
+
+-- ===== CENTRALIZED CONFIGURATION SYSTEM ===== subsection
+-- The single variable stored between sessions
+
+-- Default configuration
+
+local DEFAULT_CONFIG = {
+    version = 1,
+    currentProfile = "default",
+    profiles = {
+        default = {
+            positions = {
+                armor = {x = 0, y = 0},
+                resistance = {x = 0, y = 30},
+                debuffs = {x = 0, y = -50}
+            },
+            display = {
+                scale = 1.10,
+                showArmorBackground = true,
+                showResistanceBackground = true,
+                showDebuffBackground = true,
+                showArmorText = true,
+                showResistanceText = true,
+            },
+            locks = {
+                armor = false,
+                resistance = false,
+                debuffs = false
+            },
+            notifications = {
+                announceArmorDrop = false,
+                channel = "Say",
+                channels = {"Say", "Yell", "Party", "Raid", "Raid_Warning"}
+            },
+            enabledDebuffs = {},
+            debuffSettings = {
+                maxColumns = 7,
+                maxRows = 3,
+                hideInactive = false,
+                dynamicIcons = true
+            }
+        }
+    }
+}
+
+-- Function to copy tables (simple, not deep-recursive)
+
+local function CopyTable(src)
+    if type(src) ~= "table" then return src end
+    local dst = {}
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            dst[k] = CopyTable(v)
+        else
+            dst[k] = v
+        end
+    end
+    return dst
+end
+
+
+-- Function to ensure the configuration structure is complete
+
+local function EnsureConfigStructure()
+
+	-- If missing, create with default values
+
+	if not aDF_Options then
+        aDF_Options = CopyTable(DEFAULT_CONFIG)
+        return
+    end
+    
+	-- If exists but version is older, migrate while preserving existing profiles
+
+	if not aDF_Options.version or aDF_Options.version < DEFAULT_CONFIG.version then
+
+		-- Preserve existing profiles if present
+
+		local existingProfiles = aDF_Options.profiles or {}
+		aDF_Options = CopyTable(DEFAULT_CONFIG)
+		aDF_Options.profiles = existingProfiles
+
+		-- Ensure the default profile exists
+
+		if not aDF_Options.profiles["default"] then
+			aDF_Options.profiles["default"] = CopyTable(DEFAULT_CONFIG.profiles.default)
+		end
+		aDF_Options.currentProfile = aDF_Options.currentProfile or "default"
+	end
+
+	-- Ensure essential fields
+
+	aDF_Options.profiles = aDF_Options.profiles or {}
+	aDF_Options.currentProfile = aDF_Options.currentProfile or "default"
+
+	-- Ensure the current profile exists
+
+	if not aDF_Options.profiles[aDF_Options.currentProfile] then
+		aDF_Options.currentProfile = "default"
+		if not aDF_Options.profiles["default"] then
+			aDF_Options.profiles["default"] = CopyTable(DEFAULT_CONFIG.profiles.default)
+		end
+	end
+
+	-- Ensure complete structure for the current profile
+
+	local currentProfile = aDF_Options.profiles[aDF_Options.currentProfile]
+	local defaultProfile = DEFAULT_CONFIG.profiles.default
+
+	for category, defaultCategory in pairs(defaultProfile) do
+		if not currentProfile[category] then
+			currentProfile[category] = CopyTable(defaultCategory)
+		elseif type(defaultCategory) == "table" then
+			for subKey, subDefault in pairs(defaultCategory) do
+				if currentProfile[category][subKey] == nil then
+					currentProfile[category][subKey] = subDefault
+				end
+			end
+		end
+	end
+end
+
+-- Safe function to get current configuration (NEVER returns nil)
+
+local function GetConfig()
+    EnsureConfigStructure()
+    return aDF_Options.profiles[aDF_Options.currentProfile]
+end
+
+-- Proxy variable for compatibility with existing code
+
+local DB = {}
+setmetatable(DB, {
+    __index = function(self, key)
+        return GetConfig()[key]
+    end,
+    __newindex = function(self, key, value)
+        GetConfig()[key] = value
+    end
+})
+
+
+-- Quick and safe access to the current configuration
+
+local function GetDB()
+	return GetConfig()
+end
+
+-- Base sizes used for scalable UI (multiplied by db.display.scale)
+
+local ICON_BASE = 24
+local FONT_BASE_NR = 16
+local FONT_BASE_ARMOR = 18
+local FONT_BASE_RES = 14
+
+-- ===== VARIABLES RUNTIME ===== subsection
+-- this variables don't savedvariables between sessions
+
 -- Throttle variables
 
 local lastIconUpdate = 0
 local ICON_UPDATE_THROTTLE = 0.5
 local lastAuraTime = 0
 local pendingUpdate = false
+local last_target_change_time = GetTime()
 
--- Containers, this help fps
+-- Containers for frames
 
-aDF_frames = {} -- Container for all debuff frame elements
-aDF_guiframes = {} -- Container for all GUI checkbox elements
-gui_Options = gui_Options or {} -- Checklist options storage
-gui_Optionsxy = gui_Optionsxy or 1 -- Size scaling factor
-gui_showArmorBackground = gui_showArmorBackground or 1
-gui_showArmorText = gui_showArmorText or 1
-gui_showResText = gui_showResText or 1
-gui_announceArmorDrop = gui_announceArmorDrop or nil
-gui_chan = gui_chan or "Say"
-aDF_x, aDF_y = aDF_x or 0, aDF_y or 0
-local last_target_change_time = GetTime() -- Timing for target changes
+aDF_frames = {}       -- Container for all debuff frame elements
+aDF_guiframes = {}    -- Container for all GUI checkbox elements
 
--- Chat channel options
-gui_chantbl = {
-	"Say",
-	"Yell",
-	"Party",
-	"Raid",
-	"Raid_Warning"
-}
+-- Variables temporales de estado
+
+local aDF_target = nil
+local aDF_armorprev = 30000
+local aDF_lastResUpdate = 0
+
+-- Global frames for external access
+
+aDF_ArmorFrame = nil
+aDF_DebuffFrame = nil
+aDF_ResFrame = nil
 
 -- ==== DATA TABLES: SPELLS AND DEBUFFS ==== Esta es la tabla de datos de debuffs
 
 -- Translation table for debuff check on target
+
 aDFSpells = {
+
 	--armor
+
 	["Expose Armor"] = "Expose Armor",
 	["Sunder Armor"] = "Sunder Armor",
 	["Curse of Recklessness"] = "Curse of Recklessness",
@@ -109,21 +284,31 @@ aDFSpells = {
 	["Cleave Armor"] = "Cleave Armor", --300
 	["Shattered Armor"] = "Shattered Armor", --250
 	["Holy Sunder"] = "Holy Sunder", --50
-	["Gift of Arthas"] = "Gift of Arthas", --arthas gift
-	["Crooked Claw"] = "Crooked Claw", --scythe pet 2% melee
 
 	--spells
+
 	["Judgement of Wisdom"] = "Judgement of Wisdom",
 	["Curse of Shadows"] = "Curse of Shadow",
 	["Curse of the Elements"] = "Curse of the Elements",
-	["Nightfall"] = "Spell Vulnerability",
+	["Fire Vulnerability"] = "Fire Vulnerability",
 	["Shadow Weaving"] = "Shadow Weaving",
+	["Nightfall"] = "Spell Vulnerability",
 	["Flame Buffet"] = "Flame Buffet", --arcanite dragon/fire buff
+
+	--other
+
+	["Gift of Arthas"] = "Gift of Arthas", --arthas gift
+	["Crooked Claw"] = "Crooked Claw", --scythe pet 2% melee
+	["Demoralizing Shout"] = {"Demoralizing Shout", "Demoralizing Roar"}, --need testing
+	["Thunder Clap"] = {"Thunder Clap","Thunderfury", "Frigid Blast"} --need testing
 }
 
 -- Table with debuff names and their icon textures
+
 aDFDebuffs = {
+
 	--armor
+
 	["Expose Armor"] = "Interface\\Icons\\Ability_Warrior_Riposte",
 	["Sunder Armor"] = "Interface\\Icons\\Ability_Warrior_Sunder",
 	["Faerie Fire"] = "Interface\\Icons\\Spell_Nature_FaerieFire",
@@ -132,22 +317,30 @@ aDFDebuffs = {
 	["Cleave Armor"] = "Interface\\Icons\\Ability_Warrior_Savageblow", --300
 	["Feast of Hakkar"] = "Interface\\Icons\\Spell_Shadow_Bloodboil", --250
 	["Holy Sunder"] = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras", --50
-	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
-	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
 
 	--spells
+
 	["Curse of Shadows"] = "Interface\\Icons\\Spell_Shadow_CurseOfAchimonde",
 	["Curse of the Elements"] = "Interface\\Icons\\Spell_Shadow_ChillTouch",
+	["Shadow Weaving"] = "Interface\\Icons\\Spell_Shadow_BlackPlague",
+	["Fire Vulnerability"] = "Interface\\Icons\\Spell_Fire_SoulBurn",
 	["Nightfall"] = "Interface\\Icons\\Spell_Holy_ElunesGrace",
 	["Flame Buffet"] = "Interface\\Icons\\Spell_Fire_Fireball",
 	["Decaying Flesh"] = "Interface\\Icons\\Spell_Shadow_Lifedrain",
 	["Judgement of Wisdom"] = "Interface\\Icons\\Spell_Holy_RighteousnessAura",
-	["Shadow Weaving"] = "Interface\\Icons\\Spell_Shadow_BlackPlague",
+
+	--other
+
+	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
+	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
+	["Demoralizing Shout"] = "Interface\\Icons\\Ability_Warrior_WarCry", --reduction melee attack
+	["Thunder Clap"] = "Interface\\Icons\\Spell_Nature_Cyclone", --slow attack. Use Thunder Clap, Thunderfury or Frigid Blast this icon
 }
 
--- ==== DATA TABLE: ARMOR VALUES ==== Aqui declaramos los valores de reduccion de armadura
+-- ==== DATA TABLE: ARMOR VALUES ====
 
 -- Armor reduction values by damage amount (identifies which debuff was applied)
+
 aDFArmorVals = {
 	[90]   = "Sunder Armor x1", -- r1 x1
 	[180]  = "Sunder Armor",    -- r2 x1, or r1 x2
@@ -158,18 +351,14 @@ aDFArmorVals = {
 	[720]  = "Sunder Armor",    -- r4 x2, or r2 x4
 	[1080] = "Sunder Armor",    -- r4 x3, or r3 x4
 	[1440] = "Sunder Armor x4", -- r4 x4
-	[450]  = "Sunder Armor",    -- r5 x1, or r1 x5
-	[900]  = "Sunder Armor",    -- r5 x2, or r2 x5
-	[1350] = "Sunder Armor",    -- r5 x3, or r3 x5
-	[1800] = "Sunder Armor",    -- r5 x4, or r4 x5
+	[450]  = "Sunder Armor x1",    -- r5 x1, or r1 x5
+	[900]  = "Sunder Armor x2",    -- r5 x2, or r2 x5
+	[1350] = "Sunder Armor x3",    -- r5 x3, or r3 x5
+	[1800] = "Sunder Armor x4",    -- r5 x4, or r4 x5
 	[2250] = "Sunder Armor x5", -- r5 x5
 	[725]  = "Untalented Expose Armor",
 	[1050] = "Untalented Expose Armor",
 	[1375] = "Untalented Expose Armor",
-	[510]  = "Fucked up IEA?",
-	[1020] = "Fucked up IEA?",
-	[1530] = "Fucked up IEA?",
-	[2040] = "Fucked up IEA?",
 	[2550] = "Improved Expose Armor",
 	[1700] = "Untalented Expose Armor",
 	[505]  = "Faerie Fire",
@@ -183,19 +372,22 @@ aDFArmorVals = {
 	[163]  = "The Ripper / Vile Sting", -- turtle weps. spell=3396 is NPC-only in 1.12. falsely says 60 on tooltip
 	[100]  = "Weapon Proc Faerie Fire", -- non-stacking proc spell=13752, Puncture Armor r1 x1 spell=11791
 
-	-- Nuevos valores de DT
-
+	-- New value to DT
+	
 	[400] = "Feast of Hakkar", --chest 300 runs
 	[250] = "Shattered Armor", --saber weapon
 	[300] = "Cleave Armor", --300
 	[50]   = "Holy Sunder",
 }
 
--- ==== DATA TABLE: DEBUFF ORDER ===== Aqui declaramos el orden de los debuffs en pantalla y como aparecen
-
+-- ==== DATA TABLE: DEBUFF ORDER ===== 
+-- In this section is the order in which the debuffs will be displayed
 -- Display order of debuffs (Left → Right, Top → Bottom)
+
 aDFOrder = {
+
 	--armor/melee
+	
     "Expose Armor",
     "Sunder Armor", --2200
     "Curse of Recklessness",
@@ -205,44 +397,53 @@ aDFOrder = {
 	"Cleave Armor", --300
     "Shattered Armor", --250
     "Holy Sunder", --50
-	"Gift of Arthas", --arthas gilft
+
+	--other
+	
+	"Gift of Arthas", --arthas gift
 	"Crooked Claw", --scythe pet
+	"Demoralizing Shout",
+	"Thunder Clap",
 
 	--spells/caster
+	
     "Judgement of Wisdom",
     "Curse of Shadows",
     "Curse of the Elements",
+	"Fire Vulnerability",
 	"Shadow Weaving",
     "Nightfall",
     "Flame Buffet" --arcanite dragon
 }
 
--- ==== UTILITY FUNCTIONS ==== Funciones de utilidad (defaults, debug)
+-- ==== UTILITY FUNCTIONS ==== 
+-- Utility functions (defaults, debug)
 
 -- Initialize default configuration for debuff checkboxes
 
 function aDF_Default()
-	if guiOptions == nil then
-		guiOptions = {}
-		for k,v in pairs(aDFDebuffs) do
-			if guiOptions[k] == nil then
-				guiOptions[k] = 1
-			end
+	local db = GetDB()  -- Get current configuration
+    
+	if not db.enabledDebuffs or not next(db.enabledDebuffs) then
+		db.enabledDebuffs = {}
+		for k, v in pairs(aDFDebuffs) do
+			db.enabledDebuffs[k] = true  -- All active by default
 		end
 	end
 end
 
--- Debug print function
+-- Debug print function, testing 4.3? 4.4?
+	
+-- function adfprint(arg1)
+-- 	DEFAULT_CHAT_FRAME:AddMessage("|cffCC121D adf debug|r "..arg1)
+-- end
 
-function adfprint(arg1)
-	DEFAULT_CHAT_FRAME:AddMessage("|cffCC121D adf debug|r "..arg1)
-end
-
--- ==== DEBUFF FRAME CREATION ==== Funciones de creacion de frames de los debuffs
+-- ==== DEBUFF FRAME CREATION ==== Functions to create debuff frames
 
 -- Creates the debuff frame elements
 
 function aDF.Create_frame(name)
+	local db = GetDB()  -- Get current configuration
 	local frame = CreateFrame('Button', name, aDF)
 	frame:SetBackdrop({ bgFile=[[Interface/Tooltips/UI-Tooltip-Background]] })
 	frame:SetBackdropColor(255,255,255,1)
@@ -252,7 +453,7 @@ function aDF.Create_frame(name)
 	frame.icon:SetPoint('BOTTOMRIGHT', -1, 1)
 	frame.nr = frame:CreateFontString(nil, "OVERLAY")
 	frame.nr:SetPoint("CENTER", frame, "CENTER", 0, 0)
-	frame.nr:SetFont("Fonts\\FRIZQT__.TTF", 16+gui_Optionsxy)
+	frame.nr:SetFont("Fonts\\FRIZQT__.TTF", math.floor(FONT_BASE_NR * db.display.scale + 0.5))
 	frame.nr:SetTextColor(255, 255, 255, 1)
 	frame.nr:SetShadowOffset(2,-2)
 	frame.nr:SetText("1")
@@ -262,25 +463,29 @@ end
 -- Creates GUI checkboxes for debuff selection in options panel
 
 function aDF.Create_guiframe(name)
+	local db = GetDB()  -- Get current configuration
 	local frame = CreateFrame("CheckButton", name, aDF.Options, "UICheckButtonTemplate")
 	frame:SetFrameStrata("LOW")
-	frame:SetScript("OnClick", function () 
-		if frame:GetChecked() == nil then 
-			guiOptions[name] = nil
-		elseif frame:GetChecked() == 1 then 
-			guiOptions[name] = 1 
-			table.sort(guiOptions)
+	frame:SetScript("OnClick", function() 
+		local isChecked = frame:GetChecked()
+		if isChecked == nil then 
+			db.enabledDebuffs[name] = false  -- Change nil to false, no diference in logic, but more clean
+		elseif isChecked == 1 then 
+			db.enabledDebuffs[name] = true
+		table.sort(db.enabledDebuffs)
 		end
 		aDF:Sort()
 		aDF:Update()
-		end)
+	end)
+
 	frame:SetScript("OnEnter", function() 
-		GameTooltip:SetOwner(frame, "ANCHOR_RIGHT");
-		GameTooltip:SetText(name, 255, 255, 0, 1, 1);
+		GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+		GameTooltip:SetText(name, 255, 255, 0, 1, 1)
 		GameTooltip:Show()
 	end)
+
 	frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	frame:SetChecked(guiOptions[name])
+	frame:SetChecked(db.enabledDebuffs[name] and true or false)  -- Ensure it's true/false
 	frame.Icon = frame:CreateTexture(nil, 'ARTWORK')
 	frame.Icon:SetTexture(aDFDebuffs[name])
 	frame.Icon:SetWidth(25)
@@ -292,286 +497,378 @@ end
 -- ==== MAIN ARMOR/RESISTANCE FRAME ====
 
 function aDF:Init()
-	aDF.Drag = { }
-	function aDF.Drag:StartMoving()
-		if ( IsShiftKeyDown() ) then
-			this:StartMoving()
-		end
+	local db = GetDB()  -- Get current configuration
+    
+    -- ==== ARMOR FRAME ==== subsection
+
+    aDF_ArmorFrame = CreateFrame('Button', "aDF_ArmorFrame", UIParent)
+    aDF_ArmorFrame:SetFrameStrata("BACKGROUND")
+	aDF_ArmorFrame:SetWidth(100)
+	aDF_ArmorFrame:SetHeight(30)
+    aDF_ArmorFrame:SetPoint("CENTER", db.positions.armor.x, db.positions.armor.y)
+    aDF_ArmorFrame:SetMovable(1)
+    aDF_ArmorFrame:EnableMouse(1)
+    aDF_ArmorFrame:RegisterForDrag("LeftButton")
+    
+	-- Backdrop for armor
+
+    local armorBackdrop = {
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        tile = false, tileSize = 8, edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2}
+    }
+    
+    if db.display.showArmorBackground then
+        aDF_ArmorFrame:SetBackdrop(armorBackdrop)
+        aDF_ArmorFrame:SetBackdropColor(0,0,0,1)
+    end
+    
+	-- Armor text
+
+    aDF_ArmorFrame.armor = aDF_ArmorFrame:CreateFontString(nil, "OVERLAY")
+    aDF_ArmorFrame.armor:SetPoint("CENTER", aDF_ArmorFrame, "CENTER", 0, 0)
+	aDF_ArmorFrame.armor:SetFont("Fonts\\FRIZQT__.TTF", FONT_BASE_ARMOR)
+    aDF_ArmorFrame.armor:SetText("Armor")
+    
+	-- Drag & Drop for armor
+
+    aDF_ArmorFrame:SetScript("OnDragStart", function()
+        if not db.locks.armor and IsShiftKeyDown() then
+            this:StartMoving()
+        end
+    end)
+    
+    aDF_ArmorFrame:SetScript("OnDragStop", function()
+        this:StopMovingOrSizing()
+        local x, y = this:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        db.positions.armor.x, db.positions.armor.y = floor(x - ux + 0.5), floor(y - uy + 0.5)
+    end)
+    
+    -- ==== RESISTANCE FRAME ==== subsection
+
+    aDF_ResFrame = CreateFrame('Button', "aDF_ResFrame", UIParent)
+    aDF_ResFrame:SetFrameStrata("BACKGROUND")
+	aDF_ResFrame:SetWidth(100)
+	aDF_ResFrame:SetHeight(20)
+    aDF_ResFrame:SetPoint("CENTER", db.positions.resistance.x, db.positions.resistance.y)
+    aDF_ResFrame:SetMovable(1)
+    aDF_ResFrame:EnableMouse(1)
+    aDF_ResFrame:RegisterForDrag("LeftButton")
+    
+	-- Resistance text
+
+    aDF_ResFrame.res = aDF_ResFrame:CreateFontString(nil, "OVERLAY")
+    aDF_ResFrame.res:SetPoint("CENTER", aDF_ResFrame, "CENTER", 0, 0)
+	if aDF_ResFrame then
+		aDF_ResFrame.res:SetFont("Fonts\\FRIZQT__.TTF", FONT_BASE_RES)
 	end
-	
-	function aDF.Drag:StopMovingOrSizing()
-		this:StopMovingOrSizing()
-		local x, y = this:GetCenter()
-		local ux, uy = UIParent:GetCenter()
-		aDF_x, aDF_y = floor(x - ux + 0.5), floor(y - uy + 0.5)
-	end
-	
-	-- Backdrop styling for armor panel
-	local backdrop = {
-			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-			bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-			tile="false",
-			tileSize="8",
-			edgeSize="8",
-			insets={
-				left="2",
-				right="2",
-				top="2",
-				bottom="2"
-			}
-	}
-	
-	self:SetFrameStrata("BACKGROUND")
-	gui_Optionsxy = gui_Optionsxy or 1
-	self:SetWidth((24+gui_Optionsxy)*7)
-	self:SetHeight(24+gui_Optionsxy)
-	self:SetPoint("CENTER",aDF_x,aDF_y)
-	self:SetMovable(1)
-	self:EnableMouse(1)
-	self:RegisterForDrag("LeftButton")
+    aDF_ResFrame.res:SetText("Resistance")
+    
+	-- Drag & Drop for resistances
 
-	if gui_showArmorBackground == 1 then
-		self:SetBackdrop(backdrop)
-		self:SetBackdropColor(0,0,0,1)
-	end
+    aDF_ResFrame:SetScript("OnDragStart", function()
+        if not db.locks.resistance and IsShiftKeyDown() then
+            this:StartMoving()
+        end
+    end)
+    
+    aDF_ResFrame:SetScript("OnDragStop", function()
+        this:StopMovingOrSizing()
+        local x, y = this:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        db.positions.resistance.x, db.positions.resistance.y = floor(x - ux + 0.5), floor(y - uy + 0.5)
+    end)
+    
+    -- ==== DEBUFF FRAME ==== subsection
 
-	self:SetScript("OnDragStart", aDF.Drag.StartMoving)
-	self:SetScript("OnDragStop", aDF.Drag.StopMovingOrSizing)
-	self:SetScript("OnMouseDown", function()
-		if (arg1 == "RightButton") then
-			if aDF_target ~= nil then
-				if UnitAffectingCombat(aDF_target) and UnitCanAttack("player", aDF_target) then	
-					SendChatMessage(UnitName(aDF_target).." has ".. UnitResistance(aDF_target,0).." armor", gui_chan) 
-				end
-			end
-		end
-	end)
-	
-	-- Armor text display
+    aDF_DebuffFrame = CreateFrame('Button', "aDF_DebuffFrame", UIParent)
+    aDF_DebuffFrame:SetFrameStrata("BACKGROUND")
+	local initSize = math.floor(ICON_BASE * db.display.scale + 0.5)
+	aDF_DebuffFrame:SetWidth(initSize * 7)
+	aDF_DebuffFrame:SetHeight(initSize * 3)
+    aDF_DebuffFrame:SetPoint("CENTER", db.positions.debuffs.x, db.positions.debuffs.y)
+    aDF_DebuffFrame:SetMovable(1)
+    aDF_DebuffFrame:EnableMouse(1)
+    aDF_DebuffFrame:RegisterForDrag("LeftButton")
+    
+	-- Drag & Drop for debuffs
 
-	self.armor = self:CreateFontString(nil, "OVERLAY")
-    self.armor:SetPoint("CENTER", self, "CENTER", 0, 0)
-    self.armor:SetFont("Fonts\\FRIZQT__.TTF", 18+gui_Optionsxy)
-    self.armor:SetText("Armor")
-
-	-- Resistance text display
-
-	self.res = self:CreateFontString(nil, "OVERLAY")
-    self.res:SetPoint("CENTER", self, "CENTER", 0, 20+gui_Optionsxy)
-    self.res:SetFont("Fonts\\FRIZQT__.TTF", 14+gui_Optionsxy)
-    self.res:SetText("Resistance")
-
-	-- Respect text visibility options
-
-	if gui_showArmorText == 1 then
-		self.armor:Show()
-	else
-		self.armor:Hide()
-	end
-
-	if gui_showResText == 1 then
-		self.res:Show()
-	else
-		self.res:Hide()
-	end
-	
+    aDF_DebuffFrame:SetScript("OnDragStart", function()
+        if not db.locks.debuffs and IsShiftKeyDown() then
+            this:StartMoving()
+        end
+    end)
+    
+    aDF_DebuffFrame:SetScript("OnDragStop", function()
+        this:StopMovingOrSizing()
+        local x, y = this:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        db.positions.debuffs.x, db.positions.debuffs.y = floor(x - ux + 0.5), floor(y - uy + 0.5)
+    end)
+    
 	-- Create tooltip for debuff detection
 
 	aDF_tooltip = CreateFrame("GAMETOOLTIP", "buffScan")
-	aDF_tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
-	aDF_tooltipTextL = aDF_tooltip:CreateFontString()
-	aDF_tooltipTextR = aDF_tooltip:CreateFontString()
-	aDF_tooltip:AddFontStrings(aDF_tooltipTextL,aDF_tooltipTextR)
-	
-	-- Create all debuff frame elements
+    aDF_tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    aDF_tooltipTextL = aDF_tooltip:CreateFontString()
+    aDF_tooltipTextR = aDF_tooltip:CreateFontString()
+    aDF_tooltip:AddFontStrings(aDF_tooltipTextL,aDF_tooltipTextR)
+    
+	-- Create debuff frames as children of the debuff frame
 
-	f_ =  0
-	for name,texture in pairs(aDFDebuffs) do
-		aDFsize = 24+gui_Optionsxy
-		aDF_frames[name] = aDF_frames[name] or aDF.Create_frame(name)
-		local frame = aDF_frames[name]
-		frame:SetWidth(aDFsize)
-		frame:SetHeight(aDFsize)
-		frame:SetPoint("BOTTOMLEFT",aDFsize*f_,-aDFsize)
-		frame.icon:SetTexture(texture)
-		frame:SetFrameLevel(2)
-		frame:Show()
-		frame:SetScript("OnEnter", function() 
-			GameTooltip:SetOwner(frame, "ANCHOR_BOTTOMRIGHT");
-			GameTooltip:SetText(this:GetName(), 255, 255, 0, 1, 1);
-			GameTooltip:Show()
-			end)
-		frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		frame:SetScript("OnMouseDown", function()
-			if (arg1 == "RightButton") then
-				tdb=this:GetName()
-				if aDF_target ~= nil then
-					if UnitAffectingCombat(aDF_target) and UnitCanAttack("player", aDF_target) and guiOptions[tdb] ~= nil then
-						if not aDF:GetDebuff(aDF_target,aDFSpells[tdb]) then
-							SendChatMessage("["..tdb.."] is not active on "..UnitName(aDF_target), gui_chan)
-						else
-							if aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) == 1 then
-								s_ = "stack"
-							elseif aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) > 1 then
-								s_ = "stacks"
-							end
-							if aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) >= 1 and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) < 5 and tdb ~= "Armor Shatter" then
-								SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,aDFSpells[tdb],1).." ["..tdb.."] "..s_, gui_chan)
-							end
-							if tdb == "Armor Shatter" and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) >= 1 and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) < 3 then
-								SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,aDFSpells[tdb],1).." ["..tdb.."] "..s_, gui_chan)
-							end
-						end
-					end
-				end
-			end
-		end)
-		f_ = f_+1
+    for name, texture in pairs(aDFDebuffs) do
+		local aDFsize = math.floor(ICON_BASE * db.display.scale + 0.5)
+        aDF_frames[name] = aDF_frames[name] or aDF.Create_frame(name)
+        local frame = aDF_frames[name]
+        frame:SetParent(aDF_DebuffFrame)
+        frame:SetWidth(aDFsize)
+        frame:SetHeight(aDFsize)
+        frame.icon:SetTexture(texture)
+        frame:SetFrameLevel(2)
+		frame:Hide()  -- Hide initially; aDF:Sort() will show them. this have fail when new adf.lua saved variables?? need checking but have dream
+
+		-- Keep OnEnter/OnLeave scripts
+
+        frame:SetScript("OnEnter", function() 
+            GameTooltip:SetOwner(frame, "ANCHOR_TOPRIGHT")
+            GameTooltip:SetText(this:GetName(), 255, 255, 0, 1, 1)
+            GameTooltip:Show()
+        end)
+        frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    
+	-- Initialize visibility according to options
+	-- visuals match the SavedVariables state on startup.
+
+	if aDF_ArmorFrame then
+		if db.display.showArmorBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile="false",
+				tileSize="8",
+				edgeSize="8",
+				insets={left="2",right="2",top="2",bottom="2"}
+			}
+			aDF_ArmorFrame:SetBackdrop(backdrop)
+			aDF_ArmorFrame:SetBackdropColor(0,0,0,1)
+		else
+			aDF_ArmorFrame:SetBackdrop(nil)
+		end
 	end
+
+	if aDF_ResFrame then
+		if db.display.showResistanceBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile=false, tileSize=8, edgeSize=8,
+				insets={left=2, right=2, top=2, bottom=2}
+			}
+			aDF_ResFrame:SetBackdrop(backdrop)
+			aDF_ResFrame:SetBackdropColor(0,0,0,1)
+		else
+			aDF_ResFrame:SetBackdrop(nil)
+		end
+	end
+
+	if aDF_DebuffFrame then
+		if db.display.showDebuffBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile=false, tileSize=8, edgeSize=8,
+				insets={left=2, right=2, top=2, bottom=2}
+			}
+			aDF_DebuffFrame:SetBackdrop(backdrop)
+			aDF_DebuffFrame:SetBackdropColor(0,0,0,0.8)
+			aDF_DebuffFrame:SetBackdropBorderColor(0.5,0.5,0.5,0.8)
+		else
+			aDF_DebuffFrame:SetBackdrop(nil)
+		end
+	end
+
+	-- Text visibility
+
+	if not db.display.showArmorText then aDF_ArmorFrame.armor:Hide() end
+	if not db.display.showResistanceText then aDF_ResFrame.res:Hide() end
 end
 
--- ==== UPDATE FUNCTIONS ==== Funciones de actualizacion. Main update function for armor/resistance display and debuff icon states
+-- ==== UPDATE FUNCTIONS ==== 
+-- Update functions. Main update function for armor/resistance display and debuff icon states
 
 function aDF:Update()
-
-	if not aDF_target or not UnitExists(aDF_target) or UnitIsDead(aDF_target) then
-		aDF.armor:SetText("")
-		aDF.res:SetText("")
-		for i,v in pairs(guiOptions) do
-			aDF_frames[i].icon:SetAlpha(0.3)
-			aDF_frames[i].nr:SetText("")
-		end
-		return
-	end
-	
-	-- Throttle para targettarget
-
-	if aDF_target == 'targettarget' and GetTime() < (last_target_change_time + 1.3) then
-		return
-	end
-	
-	local armorcurr = UnitResistance(aDF_target,0)
-	
-	-- update armor text display
-
-	if gui_showArmorText == 1 then
-		aDF.armor:SetText(armorcurr)
-	else
-		aDF.armor:SetText("")
-	end
-	
-	-- 4. Cache para resistencias, solo cada 2 segundos
-
-	local now = GetTime()
-	if not self.lastResUpdate or (now - self.lastResUpdate) > 2 then
-		if gui_showResText == 1 then
-
-			-- Concatenación directa, se usa para evitar un string.format 
-
-			local fire = UnitResistance(aDF_target,2)
-			local nature = UnitResistance(aDF_target,3)
-			local frost = UnitResistance(aDF_target,4)
-			local shadow = UnitResistance(aDF_target,5)
-			local arcane = UnitResistance(aDF_target,6)
-			aDF.res:SetText("|cffFF0000 "..fire.." |cffADFF2F "..nature.." |cff4AE8F5 "..frost.." |cff9966CC "..shadow.." |cffFEFEFA "..arcane)
-		else
-			aDF.res:SetText("")
-		end
-		self.lastResUpdate = now
-	end
-	
-	-- Announce armor drops
-
-	if armorcurr > aDF_armorprev then
-		local armordiff = armorcurr - aDF_armorprev
-		local diffreason = ""
-		if aDF_armorprev ~= 0 and aDFArmorVals[armordiff] then
-			diffreason = " (Dropped " .. aDFArmorVals[armordiff] .. ")"
-		end
-		local msg = UnitName(aDF_target).."'s armor: "..aDF_armorprev.." -> "..armorcurr..diffreason
-		
-		if aDF_target == 'target' and gui_announceArmorDrop == 1 then
-			SendChatMessage(msg, gui_chan)
-		end
-	end
-	aDF_armorprev = armorcurr
-
-	-- Update debuff icon states, use basic throttling
-	now = GetTime()
+	local db = GetDB()  -- Get current configuration
     
-    -- Solo actualizar íconos cada 500ms máximo
-
-    if now - lastIconUpdate > ICON_UPDATE_THROTTLE then
-        lastIconUpdate = now
-        
-        for debuffName, _ in pairs(guiOptions) do
-            local frame = aDF_frames[debuffName]
-        	local hasDebuff = aDF:GetDebuff(aDF_target, aDFSpells[debuffName])
-        	local stacks = hasDebuff and aDF:GetDebuff(aDF_target, aDFSpells[debuffName], 1) or 0
-            
-            frame.icon:SetAlpha(hasDebuff and 1 or 0.3)
-            frame.nr:SetText((stacks > 1) and tostring(stacks) or "")
+    if not aDF_target or not UnitExists(aDF_target) or UnitIsDead(aDF_target) then
+        if aDF_ArmorFrame and aDF_ArmorFrame.armor then
+            aDF_ArmorFrame.armor:SetText("")
         end
-	end
-end
+        if aDF_ResFrame and aDF_ResFrame.res then
+            aDF_ResFrame.res:SetText("")
+        end
+        for i, v in pairs(db.enabledDebuffs) do
+            if aDF_frames[i] then
+                aDF_frames[i].icon:SetAlpha(0.3)
+                aDF_frames[i].nr:SetText("")
+            end
+        end
+        return
+    end
+    
+	-- Throttle for targettarget
 
--- ==== SORT & POSITIONING ==== Este es el bloque que posiciona los iconos. Sort function to show/hide frames and position them correctly
+    if aDF_target == 'targettarget' and GetTime() < (last_target_change_time + 1.3) then
+        return
+    end
+    
+    local armorcurr = UnitResistance(aDF_target,0)
+    
+    -- update armor text display
 
-function aDF:Sort()
-
-    -- Show or hide debuff frames
-
-    for name,_ in pairs(aDFDebuffs) do
-        if guiOptions[name] == nil then
-            aDF_frames[name]:Hide()
+    if aDF_ArmorFrame then
+        if db.display.showArmorText then
+            aDF_ArmorFrame.armor:SetText(armorcurr)
         else
-            aDF_frames[name]:Show()
+            aDF_ArmorFrame.armor:SetText("")
         end
     end
+    
+	-- Cache for resistances, only every 2 seconds
+	-- this reduces performance impact, but can bug if retargeting very fast
 
-    -- Build ordered list from aDFOrder
+    local now = GetTime()
+    if aDF_ResFrame then
+        if db.display.showResistanceText then
+            if not aDF_lastResUpdate or (now - aDF_lastResUpdate) > 2 then
+                local fire = UnitResistance(aDF_target,2)
+                local nature = UnitResistance(aDF_target,3)
+                local frost = UnitResistance(aDF_target,4)
+                local shadow = UnitResistance(aDF_target,5)
+                local arcane = UnitResistance(aDF_target,6)
+                aDF_ResFrame.res:SetText("|cffFF0000 "..fire.." |cffADFF2F "..nature.." |cff4AE8F5 "..frost.." |cff9966CC "..shadow.." |cffFEFEFA "..arcane)
+                aDF_lastResUpdate = now
+            end
+        else
+            aDF_ResFrame.res:SetText("")
+        end
+    end
+    
+    -- Announce armor drops
+
+    if armorcurr > aDF_armorprev then
+        local armordiff = armorcurr - aDF_armorprev
+		local diffreason = ""
+		if aDF_armorprev ~= 0 and aDFArmorVals[armordiff] then
+			diffreason = " (Dropped " .. tostring(aDFArmorVals[armordiff]) .. ")"
+		end
+		local targetName = UnitName(aDF_target) or "Unknown"
+		local msg = tostring(targetName) .. "'s armor: " .. tostring(aDF_armorprev) .. " -> " .. tostring(armorcurr) .. diffreason
+        
+        if aDF_target == 'target' and db.notifications.announceArmorDrop then
+            SendChatMessage(msg, db.notifications.channel)
+        end
+    end
+    aDF_armorprev = armorcurr
+
+    -- Update debuff icon states, use basic throttling
+
+    now = GetTime()
+    
+	-- Only update icons at most every 500ms
+	-- This reduces performance impact during heavy aura changes, but warrior cry because don't see sunder very fast, 0,5s is good i think
+
+	if now - lastIconUpdate > ICON_UPDATE_THROTTLE then
+        lastIconUpdate = now
+        
+        for debuffName, _ in pairs(db.enabledDebuffs) do
+            local frame = aDF_frames[debuffName]
+            if frame then
+                local hasDebuff = aDF:GetDebuff(aDF_target, aDFSpells[debuffName])
+                local stacks = hasDebuff and aDF:GetDebuff(aDF_target, aDFSpells[debuffName], 1) or 0
+                
+                frame.icon:SetAlpha(hasDebuff and 1 or 0.3)
+                frame.nr:SetText((stacks > 1) and tostring(stacks) or "")
+            end
+        end
+    end
+end
+
+-- ==== SORT & POSITIONING ==== 
+-- This block positions the icons. Sort function to show/hide frames and position them correctly
+
+function aDF:Sort()
+	local db = GetDB()  -- Get current configuration
+
+	-- First, build ordered list according to aDFOrder
 
     local ordered = {}
     for _, debuffName in ipairs(aDFOrder) do
-        if guiOptions[debuffName] == 1 or guiOptions[debuffName] == true then
+		-- Only include if present in aDFDebuffs and enabled in db.enabledDebuffs
+        if aDFDebuffs[debuffName] and db.enabledDebuffs[debuffName] then
             table.insert(ordered, debuffName)
         end
     end
+    
+	-- Hide all first
 
-    -- Position icons in grid
+    for name, _ in pairs(aDFDebuffs) do
+        if aDF_frames[name] then
+            aDF_frames[name]:Hide()
+        end
+    end
+    
+	-- Show and position only active ones
 
+	local size = math.floor(ICON_BASE * db.display.scale + 0.5)
+    local maxColumns = db.debuffSettings.maxColumns
+    
+	-- Count elements in ordered
+	-- needed for frame size adjustment, and need math module in this file
+
+    local orderedCount = 0
+    for _ in ipairs(ordered) do
+        orderedCount = orderedCount + 1
+    end
+    
     for index, debuffName in ipairs(ordered) do
         local frame = aDF_frames[debuffName]
-        frame:ClearAllPoints()
+        if frame then
+            frame:Show()
+            frame:ClearAllPoints()
 
-        local size = (24 + gui_Optionsxy)
+            local currentColumn = mod((index - 1), maxColumns)
+            local currentRow = floor((index - 1) / maxColumns)
+            
+            frame:SetPoint("TOPLEFT", aDF_DebuffFrame, "TOPLEFT", 
+                          size * currentColumn, 
+                          -size * currentRow)
+        end
+    end
+    
+	-- Adjust debuff frame size as needed
 
-        if index <= 7 then
-            -- First row
-            frame:SetPoint("BOTTOMLEFT", aDF, "BOTTOMLEFT", size * (index - 1), -size)
-        elseif index <= 14 then
-            -- Second row
-            frame:SetPoint("BOTTOMLEFT", aDF, "BOTTOMLEFT", size * ((index - 1) - 7), -(size * 2))
-        else
-    		-- Third row
-			frame:SetPoint("BOTTOMLEFT", aDF, "BOTTOMLEFT", size * ((index - 1) - 14), -(size * 3))
-			-- Teoricamente, se podrian añadir filas infinitas con esta logica.
-		end
+    local totalRows = 0
+    if orderedCount > 0 then
+        totalRows = ceil(orderedCount / maxColumns)
+    else
+        totalRows = 1
+    end
+    
+    if aDF_DebuffFrame then
+        local widthColumns = min(maxColumns, orderedCount)
+        aDF_DebuffFrame:SetWidth(size * widthColumns)
+        aDF_DebuffFrame:SetHeight(size * totalRows)
     end
 end
 
--- ==== DEBUFF DETECTION ==== Aqui se detectan los debuff del objetivo
--- Se vera que se usa Debuff y Buff. Esto es porque cuando se alcanza el tope de 16 debuff, internamente para el servidor se usa los slot 
--- de buff para poner mas debuff, por lo que hay que revisar ambos.Tambien pueden existir 16 debuff o buff mas, pero esos se pieden en el servidor
--- y el cliente no los detecta
--- Vanilla has a 16 debuff limit on UI. When exceeded, the server places additional debuffs in BUFF slots (but they're still debuffs).
--- Therefore we must check both UnitDebuff() AND UnitBuff(). There's also a total 48 effect limit (16 debuffs + 32 buffs).
--- Any effects beyond this are LOST SERVER-SIDE and undetectable by client (16 slots). Tooltip scanning required because debuff names in API are localized.
-
--- Check unit for a specific debuff/buff and optional stacks
+-- ==== DEBUFF DETECTION ====
+-- Function to check for a debuff/buff on a unit, by name or tooltip text
+-- We need checking debuff and buff because when debuff slot is full, some debuffs are applied as buffs slot
 
 function aDF:GetDebuff(name, buff, wantStacks)
-
     if not name or not UnitExists(name) then
         if wantStacks then
             return false, 0
@@ -621,9 +918,12 @@ function aDF:GetDebuff(name, buff, wantStacks)
     end
 end
 
--- ==== OPTIONS FRAME & UI ==== Aqui se crea el frame de opciones y su UI
+-- ==== OPTIONS FRAME & UI ==== 
+-- Here is the options frame and its UI, have more subsection
 
 function aDF.Options:Gui()
+	local db = GetDB()  -- Get current configuration
+    
 	aDF.Options.Drag = { }
 	function aDF.Options.Drag:StartMoving()
 		this:StartMoving()
@@ -634,17 +934,12 @@ function aDF.Options:Gui()
 	end
 
 	local backdrop = {
-			edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-			bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-			tile="false",
-			tileSize="4",
-			edgeSize="8",
-			insets={
-				left="2",
-				right="2",
-				top="2",
-				bottom="2"
-			}
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+		tile="false",
+		tileSize="4",
+		edgeSize="8",
+		insets={left="2", right="2", top="2", bottom="2"}
 	}
 	
 	self:SetFrameStrata("BACKGROUND")
@@ -657,11 +952,19 @@ function aDF.Options:Gui()
 	self:SetScript("OnDragStart", aDF.Options.Drag.StartMoving)
 	self:SetScript("OnDragStop", aDF.Options.Drag.StopMovingOrSizing)
 	self:SetBackdrop(backdrop)
-	self:SetBackdropColor(0,0,0,1);
+	self:SetBackdropColor(0,0,0,1)
+
+	-- Clear any tooltip that may be open
+
+	self:SetScript("OnHide", function() 
+		
+		GameTooltip:Hide()
+	end)
 	
 	-- ESC key handling: add to UISpecialFrames for automatic close
+	-- Register the frame global name (must match the CreateFrame name above)
 
-	tinsert(UISpecialFrames, "aDF_Options")
+	tinsert(UISpecialFrames, "aDF_OptionsFrame")
 	
 	-- Options title
 
@@ -688,7 +991,8 @@ function aDF.Options:Gui()
 	self.right:SetTexture(1, 1, 0, 1)
 	self.right:SetGradientAlpha("Horizontal", 255, 255, 0, 0.6, 0, 0, 0, 0)
 	
-	-- ==== TAB SYSTEM ====
+	-- ==== TAB SYSTEM ==== subsection
+
 	local tabHeight = 30
 	local tabWidth = 100
 	local tabSpacing = 5
@@ -697,8 +1001,6 @@ function aDF.Options:Gui()
 	self.tabContents = {}
 	
 	-- Tab 2: Notifications (CENTER)
-	-- Center tab is created first for easier positioning of left/right tabs
-	-- Lo usamos como centro para encuadrar el resto debemos usar este como referencia
 
 	self.tabs[2] = CreateFrame("Button", "aDF_Tab_Notifications", self, "GameMenuButtonTemplate")
 	self.tabs[2]:SetPoint("TOP", self, "TOP", 0, -100)
@@ -734,7 +1036,7 @@ function aDF.Options:Gui()
 		aDF.Options:SelectTab(3)
 	end)
 	
-	-- ==== TAB 1: DISPLAY (LEFT) ====
+	-- ==== TAB 1: DISPLAY (LEFT) ==== subsection
 
 	self.tabContents[1] = CreateFrame("Frame", nil, self)
 	self.tabContents[1]:SetWidth(560)
@@ -747,54 +1049,167 @@ function aDF.Options:Gui()
 	self.Slider:SetWidth(200)
 	self.Slider:SetHeight(20)
 	self.Slider:SetPoint("CENTER", self.tabContents[1], "CENTER", 0, 140)
-	self.Slider:SetMinMaxValues(1, 10)
-	self.Slider:SetValue(gui_Optionsxy)
-	self.Slider:SetValueStep(1)
-	getglobal(self.Slider:GetName() .. 'Low'):SetText('1')
+	self.Slider:SetMinMaxValues(0.1, 10)
+	self.Slider:SetValue(db.display.scale)
+	self.Slider:SetValueStep(0.05)
+	getglobal(self.Slider:GetName() .. 'Low'):SetText('0.1')
 	getglobal(self.Slider:GetName() .. 'High'):SetText('10')
-	self.Slider:SetScript("OnValueChanged", function() 
-		gui_Optionsxy = this:GetValue()
+	-- Prevent re-entrant updates when programmatically changing the slider
+	local updatingScale = false
+
+	-- Helper to apply a new scale value and update UI (does NOT change armor/res fonts)
+
+	local function ApplyScale(newScale)
+		if updatingScale then return end
+		if not newScale then return end
+
+		-- clamp scale value
+
+		if newScale < 0.1 then newScale = 0.1 end
+		if newScale > 10 then newScale = 10 end
+		db.display.scale = newScale
+		local aDFsize = math.floor(ICON_BASE * db.display.scale + 0.5)
+
+		-- update debuff icon frames, ONLY DEBUFFS by now
+
 		for _, frame in pairs(aDF_frames) do
-			frame:SetWidth(24+gui_Optionsxy)
-			frame:SetHeight(24+gui_Optionsxy)
-			frame.nr:SetFont("Fonts\\FRIZQT__.TTF", 16+gui_Optionsxy)
+			frame:SetWidth(aDFsize)
+			frame:SetHeight(aDFsize)
+			frame.nr:SetFont("Fonts\\FRIZQT__.TTF", math.floor(FONT_BASE_NR * db.display.scale + 0.5))
 		end
-		aDF:SetWidth((24+gui_Optionsxy)*7)
-		aDF:SetHeight(24+gui_Optionsxy)
-		aDF.armor:SetFont("Fonts\\FRIZQT__.TTF", 24+gui_Optionsxy)
-		aDF.res:SetFont("Fonts\\FRIZQT__.TTF", 14+gui_Optionsxy)
-		aDF.res:SetPoint("CENTER", aDF, "CENTER", 0, 20+gui_Optionsxy)
+
+		-- update debuff container size (use configured maxColumns/maxRows)
+		-- can be changed by user in debuff tab, but need updating here too and probably bug. im dont testing
+
+		if aDF_DebuffFrame then
+			aDF_DebuffFrame:SetWidth(aDFsize * (db.debuffSettings.maxColumns or 7))
+			aDF_DebuffFrame:SetHeight(aDFsize * (db.debuffSettings.maxRows or 3))
+		end
+
+		-- sync slider and display (avoid triggering OnValueChanged handler)
+
+		updatingScale = true
+		self.Slider:SetValue(db.display.scale)
+		updatingScale = false
+		if self.SliderValue then
+			self.SliderValue:SetText(string.format("%.2f", db.display.scale))
+		end
 		aDF:Sort()
+	end
+
+	-- == Slider change handler == subsection
+	-- by now only debuff icons are scaled
+
+	self.Slider:SetScript("OnValueChanged", function()
+		local v = this and this:GetValue() or self.Slider:GetValue()
+		if not updatingScale then
+			ApplyScale(v)
+		end
+	end)
+
+	-- Numeric display for current scale (editable)
+
+	self.SliderValue = CreateFrame("EditBox", nil, self.tabContents[1], "InputBoxTemplate")
+	self.SliderValue:SetWidth(40)
+	self.SliderValue:SetHeight(20)
+
+	-- Place the numeric EditBox centered below the slider to save horizontal space
+
+	self.SliderValue:SetPoint("TOP", self.Slider, "BOTTOM", 0, 0)
+	self.SliderValue:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.SliderValue:SetAutoFocus(false)
+	self.SliderValue:SetText(string.format("%.2f", db.display.scale))
+	self.SliderValue:SetScript("OnEnterPressed", function()
+		local v = tonumber(self.SliderValue:GetText())
+		if v then ApplyScale(v) end
+		this:ClearFocus()
+	end)
+
+	self.SliderValue:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+	self.SliderValue:SetScript("OnEditFocusLost", function() -- keep display in sync
+		self.SliderValue:SetText(string.format("%.2f", db.display.scale))
+	end)
+
+	-- Increment / Decrement buttons
+
+	local step = 0.05
+
+	-- == Button - == subsection lvl 2
+	-- Decrement button (left of number)
+
+	self.SliderDec = CreateFrame("Button", nil, self.tabContents[1], "UIPanelButtonTemplate")
+	self.SliderDec:SetWidth(20)
+	self.SliderDec:SetHeight(20)
+
+	-- Decrement button immediately left of the number
+	self.SliderDec:SetPoint("RIGHT", self.SliderValue, "LEFT", -6, 0)
+	self.SliderDec:SetText("-")
+	self.SliderDec:SetScript("OnClick", function()
+		ApplyScale(math.floor((db.display.scale - step) * 100 + 0.5) / 100)
+	end)
+
+	-- == Button + == subsection lvl 2
+	-- Increment button (right of number)
+
+	self.SliderInc = CreateFrame("Button", nil, self.tabContents[1], "UIPanelButtonTemplate")
+	self.SliderInc:SetWidth(20)
+	self.SliderInc:SetHeight(20)
+
+	-- Increment button immediately right of the number
+
+	self.SliderInc:SetPoint("LEFT", self.SliderValue, "RIGHT", 6, 0)
+	self.SliderInc:SetText("+")
+	self.SliderInc:SetScript("OnClick", function()
+		ApplyScale(math.floor((db.display.scale + step) * 100 + 0.5) / 100)
 	end)
 	self.Slider:Show()
 	
+	-- == show/lock titles == subsection 
+	-- Options title "Show" 
+
+	self.showTitle = self.tabContents[1]:CreateFontString(nil, "OVERLAY")
+    self.showTitle:SetPoint("CENTER", self.tabContents[1], "CENTER", -100, 100)
+    self.showTitle:SetFont("Fonts\\FRIZQT__.TTF", 12)
+    self.showTitle:SetText("Show Options")
+
+	-- Options title "Lock" 
+
+	self.lockTitle = self.tabContents[1]:CreateFontString(nil, "OVERLAY")
+    self.lockTitle:SetPoint("CENTER", self.tabContents[1], "CENTER", 100, 100)
+    self.lockTitle:SetFont("Fonts\\FRIZQT__.TTF", 12)
+    self.lockTitle:SetText("Lock Options")
+
+	-- == Checkbox: Show/hide == subsection
+
 	-- Checkbox: Show armor background
 
 	self.armorBackgroundCheckbox = CreateFrame("CheckButton", "aDF_ArmorBackgroundCheckbox", self.tabContents[1], "UICheckButtonTemplate")
-	self.armorBackgroundCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -100, 60)
+	self.armorBackgroundCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -160, 60)
 	
 	self.armorBackgroundCheckboxText = self.armorBackgroundCheckbox:CreateFontString(nil, "OVERLAY")
 	self.armorBackgroundCheckboxText:SetPoint("LEFT", self.armorBackgroundCheckbox, "RIGHT", 5, 0)
 	self.armorBackgroundCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
-	self.armorBackgroundCheckboxText:SetText("Show armor background")
+	self.armorBackgroundCheckboxText:SetText("Armor Background")
 
-	self.armorBackgroundCheckbox:SetChecked(gui_showArmorBackground == 1)
+	self.armorBackgroundCheckbox:SetChecked(db.display.showArmorBackground)
 
 	self.armorBackgroundCheckbox:SetScript("OnClick", function()
-		gui_showArmorBackground = self.armorBackgroundCheckbox:GetChecked() and 1 or 0
-		if gui_showArmorBackground == 1 then
-			local backdrop = {
-				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-				tile="false",
-				tileSize="8",
-				edgeSize="8",
-				insets={left="2",right="2",top="2",bottom="2"}
-			}
-			aDF:SetBackdrop(backdrop)
-			aDF:SetBackdropColor(0,0,0,1)
-		else
-			aDF:SetBackdrop(nil)
+		db.display.showArmorBackground = self.armorBackgroundCheckbox:GetChecked() and true or false
+		if aDF_ArmorFrame then
+			if db.display.showArmorBackground then
+				local backdrop = {
+					edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+					bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+					tile="false",
+					tileSize="8",
+					edgeSize="8",
+					insets={left="2",right="2",top="2",bottom="2"}
+				}
+				aDF_ArmorFrame:SetBackdrop(backdrop)
+				aDF_ArmorFrame:SetBackdropColor(0,0,0,1)
+			else
+				aDF_ArmorFrame:SetBackdrop(nil)
+			end
 		end
 	end)
 
@@ -808,43 +1223,270 @@ function aDF.Options:Gui()
 		GameTooltip:Hide()
 	end)
 
+	-- Checkbox: Show/hide resistance background
+
+	self.resBackgroundCheckbox = CreateFrame("CheckButton", "aDF_ResBackgroundCheckbox", self.tabContents[1], "UICheckButtonTemplate")
+	self.resBackgroundCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -160, 20)
+	self.resBackgroundCheckboxText = self.resBackgroundCheckbox:CreateFontString(nil, "OVERLAY")
+	self.resBackgroundCheckboxText:SetPoint("LEFT", self.resBackgroundCheckbox, "RIGHT", 5, 0)
+	self.resBackgroundCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.resBackgroundCheckboxText:SetText("Resistance Background")
+	self.resBackgroundCheckbox:SetChecked(db.display.showResistanceBackground)
+	self.resBackgroundCheckbox:SetScript("OnClick", function()
+		db.display.showResistanceBackground = self.resBackgroundCheckbox:GetChecked() and true or false
+		if aDF_ResFrame then
+			if db.display.showResistanceBackground then
+				local backdrop = {
+					edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+					bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+					tile=false, tileSize=8, edgeSize=8,
+					insets={left=2, right=2, top=2, bottom=2}
+				}
+				aDF_ResFrame:SetBackdrop(backdrop)
+				aDF_ResFrame:SetBackdropColor(0,0,0,1)
+			else
+				aDF_ResFrame:SetBackdrop(nil)
+			end
+		end
+	end)
+
+	self.resBackgroundCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.resBackgroundCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Show or hide the background border of the resistance panel.", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.resBackgroundCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- Checkbox: Show/hide debuff background
+
+	self.debuffBackgroundCheckbox = CreateFrame("CheckButton", "aDF_DebuffBackgroundCheckbox", self.tabContents[1], "UICheckButtonTemplate")
+	self.debuffBackgroundCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -160, -20)
+	self.debuffBackgroundCheckboxText = self.debuffBackgroundCheckbox:CreateFontString(nil, "OVERLAY")
+	self.debuffBackgroundCheckboxText:SetPoint("LEFT", self.debuffBackgroundCheckbox, "RIGHT", 5, 0)
+	self.debuffBackgroundCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.debuffBackgroundCheckboxText:SetText("Debuff Background")
+	self.debuffBackgroundCheckbox:SetChecked(db.display.showDebuffBackground)
+	self.debuffBackgroundCheckbox:SetScript("OnClick", function()
+		db.display.showDebuffBackground = self.debuffBackgroundCheckbox:GetChecked() and true or false
+		if aDF_DebuffFrame then
+			if db.display.showDebuffBackground then
+				local backdrop = {
+					edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+					bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+					tile=false, tileSize=8, edgeSize=8,
+					insets={left=2, right=2, top=2, bottom=2}
+				}
+				aDF_DebuffFrame:SetBackdrop(backdrop)
+				aDF_DebuffFrame:SetBackdropColor(0,0,0,0.8)
+				aDF_DebuffFrame:SetBackdropBorderColor(0.5,0.5,0.5,0.8)
+			else
+				aDF_DebuffFrame:SetBackdrop(nil)
+			end
+		end
+	end)
+
+	self.debuffBackgroundCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.debuffBackgroundCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Show or hide the background border of the debuff panel", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.debuffBackgroundCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- Ensure checkboxes reflect actual db values and apply backdrops accordingly
+	
+	self.armorBackgroundCheckbox:SetChecked(db.display.showArmorBackground and true or false)
+	self.resBackgroundCheckbox:SetChecked(db.display.showResistanceBackground and true or false)
+	self.debuffBackgroundCheckbox:SetChecked(db.display.showDebuffBackground and true or false)
+
+	-- Apply armor backdrop according to current config
+	if aDF_ArmorFrame then
+		if db.display.showArmorBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile="false",
+				tileSize="8",
+				edgeSize="8",
+				insets={left="2",right="2",top="2",bottom="2"}
+			}
+			aDF_ArmorFrame:SetBackdrop(backdrop)
+			aDF_ArmorFrame:SetBackdropColor(0,0,0,1)
+		else
+			aDF_ArmorFrame:SetBackdrop(nil)
+		end
+	end
+
+	-- Apply resistance backdrop according to current config
+	if aDF_ResFrame then
+		if db.display.showResistanceBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile=false, tileSize=8, edgeSize=8,
+				insets={left=2, right=2, top=2, bottom=2}
+			}
+			aDF_ResFrame:SetBackdrop(backdrop)
+			aDF_ResFrame:SetBackdropColor(0,0,0,1)
+		else
+			aDF_ResFrame:SetBackdrop(nil)
+		end
+	end
+
+	-- Apply debuff backdrop according to current config
+	if aDF_DebuffFrame then
+		if db.display.showDebuffBackground then
+			local backdrop = {
+				edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+				bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+				tile=false, tileSize=8, edgeSize=8,
+				insets={left=2, right=2, top=2, bottom=2}
+			}
+			aDF_DebuffFrame:SetBackdrop(backdrop)
+			aDF_DebuffFrame:SetBackdropColor(0,0,0,0.8)
+			aDF_DebuffFrame:SetBackdropBorderColor(0.5,0.5,0.5,0.8)
+		else
+			aDF_DebuffFrame:SetBackdrop(nil)
+		end
+	end
+
 	-- Checkbox: Show/hide armor text
 
 	self.armorTextCheckbox = CreateFrame("CheckButton", "aDF_ArmorTextCheckbox", self.tabContents[1], "UICheckButtonTemplate")
-	self.armorTextCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -100, 20)
+	self.armorTextCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -160, -60)
 	self.armorTextCheckboxText = self.armorTextCheckbox:CreateFontString(nil, "OVERLAY")
 	self.armorTextCheckboxText:SetPoint("LEFT", self.armorTextCheckbox, "RIGHT", 5, 0)
 	self.armorTextCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
-	self.armorTextCheckboxText:SetText("Show armor")
-	self.armorTextCheckbox:SetChecked(gui_showArmorText == 1)
+	self.armorTextCheckboxText:SetText("Armor")
+	self.armorTextCheckbox:SetChecked(db.display.showArmorText)
 	self.armorTextCheckbox:SetScript("OnClick", function()
-		gui_showArmorText = self.armorTextCheckbox:GetChecked() and 1 or 0
-		if gui_showArmorText == 1 then
-			aDF.armor:Show()
-		else
-			aDF.armor:Hide()
+		db.display.showArmorText = self.armorTextCheckbox:GetChecked() and true or false
+		if aDF_ArmorFrame then
+			if db.display.showArmorText then
+				aDF_ArmorFrame.armor:Show()
+			else
+				aDF_ArmorFrame.armor:Hide()
+			end
 		end
+	end)
+
+	self.armorTextCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.armorTextCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Show or hide the armor text.", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.armorTextCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
 	end)
 
 	-- Checkbox: Show/hide resistance text
 
 	self.resTextCheckbox = CreateFrame("CheckButton", "aDF_ResTextCheckbox", self.tabContents[1], "UICheckButtonTemplate")
-	self.resTextCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -100, -20)
+	self.resTextCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", -160, -100)
 	self.resTextCheckboxText = self.resTextCheckbox:CreateFontString(nil, "OVERLAY")
 	self.resTextCheckboxText:SetPoint("LEFT", self.resTextCheckbox, "RIGHT", 5, 0)
 	self.resTextCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
-	self.resTextCheckboxText:SetText("Show resistance")
-	self.resTextCheckbox:SetChecked(gui_showResText == 1)
+	self.resTextCheckboxText:SetText("Resistance")
+	self.resTextCheckbox:SetChecked(db.display.showResistanceText)
 	self.resTextCheckbox:SetScript("OnClick", function()
-		gui_showResText = self.resTextCheckbox:GetChecked() and 1 or 0
-		if gui_showResText == 1 then
-			aDF.res:Show()
-		else
-			aDF.res:Hide()
+		db.display.showResistanceText = self.resTextCheckbox:GetChecked() and true or false
+		if aDF_ResFrame then
+			if db.display.showResistanceText then
+				aDF_ResFrame.res:Show()
+			else
+				aDF_ResFrame.res:Hide()
+			end
 		end
 	end)
-	
-	-- ==== TAB 2: NOTIFICATIONS (CENTER) ====
+
+	self.resTextCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.resTextCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Show or hide the resistance text.", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.resTextCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- == Checkbox: Lock/Unlock == subsection
+
+	-- Checkbox: Lock armor frame
+
+	self.lockArmorCheckbox = CreateFrame("CheckButton", "aDF_LockArmorCheckbox", self.tabContents[1], "UICheckButtonTemplate")
+	self.lockArmorCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", 60, 60)
+	self.lockArmorCheckboxText = self.lockArmorCheckbox:CreateFontString(nil, "OVERLAY")
+	self.lockArmorCheckboxText:SetPoint("LEFT", self.lockArmorCheckbox, "RIGHT", 5, 0)
+	self.lockArmorCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.lockArmorCheckboxText:SetText("Armor frame")
+	self.lockArmorCheckbox:SetChecked(db.locks.armor)
+	self.lockArmorCheckbox:SetScript("OnClick", function()
+		db.locks.armor = self.lockArmorCheckbox:GetChecked() and true or false
+	end)
+
+	self.lockArmorCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.lockArmorCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Lock the armor frame (prevents moving). Use Reset to restore.", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.lockArmorCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- Checkbox: Lock resistance frame
+
+	self.lockResCheckbox = CreateFrame("CheckButton", "aDF_LockResCheckbox", self.tabContents[1], "UICheckButtonTemplate")
+	self.lockResCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", 60, 20)
+	self.lockResCheckboxText = self.lockResCheckbox:CreateFontString(nil, "OVERLAY")
+	self.lockResCheckboxText:SetPoint("LEFT", self.lockResCheckbox, "RIGHT", 5, 0)
+	self.lockResCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.lockResCheckboxText:SetText("Resistance frame")
+	self.lockResCheckbox:SetChecked(db.locks.resistance)
+	self.lockResCheckbox:SetScript("OnClick", function()
+		db.locks.resistance = self.lockResCheckbox:GetChecked() and true or false
+	end)
+
+	self.lockResCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.lockResCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Lock the resistance frame (prevents moving).", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.lockResCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- Checkbox: Lock debuff frame
+
+	self.lockDebuffCheckbox = CreateFrame("CheckButton", "aDF_LockDebuffCheckbox", self.tabContents[1], "UICheckButtonTemplate")
+	self.lockDebuffCheckbox:SetPoint("CENTER", self.tabContents[1], "CENTER", 60, -20)
+	self.lockDebuffCheckboxText = self.lockDebuffCheckbox:CreateFontString(nil, "OVERLAY")
+	self.lockDebuffCheckboxText:SetPoint("LEFT", self.lockDebuffCheckbox, "RIGHT", 5, 0)
+	self.lockDebuffCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
+	self.lockDebuffCheckboxText:SetText("Debuff frame")
+	self.lockDebuffCheckbox:SetChecked(db.locks.debuffs)
+	self.lockDebuffCheckbox:SetScript("OnClick", function()
+		db.locks.debuffs = self.lockDebuffCheckbox:GetChecked() and true or false
+	end)
+
+	self.lockDebuffCheckbox:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(self.lockDebuffCheckbox, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Lock the debuff frame (prevents moving).", 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	self.lockDebuffCheckbox:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	-- ==== TAB 2: NOTIFICATIONS (CENTER) ==== subsection
 
 	self.tabContents[2] = CreateFrame("Frame", nil, self)
 	self.tabContents[2]:SetWidth(560)
@@ -861,12 +1503,10 @@ function aDF.Options:Gui()
 	self.armorDropCheckboxText:SetFont("Fonts\\FRIZQT__.TTF", 12)
 	self.armorDropCheckboxText:SetText("Announce armor drop")
 
-	self.armorDropCheckbox:SetChecked(gui_announceArmorDrop == 1)
-
-	-- Sin esto no funcioan el checkbox correctamente
+	self.armorDropCheckbox:SetChecked(db.notifications.announceArmorDrop)
 	
 	self.armorDropCheckbox:SetScript("OnClick", function()
-		gui_announceArmorDrop = self.armorDropCheckbox:GetChecked() and 1 or nil
+		db.notifications.announceArmorDrop = self.armorDropCheckbox:GetChecked() and true or false
 	end)
 
 	self.armorDropCheckbox:SetScript("OnEnter", function()
@@ -885,26 +1525,26 @@ function aDF.Options:Gui()
 	self.dropdown:SetPoint("CENTER", self.tabContents[2], "CENTER", -100, 80)
 	InitializeDropdown = function() 
 		local info = {}
-		for k,v in pairs(gui_chantbl) do
+		for k, v in pairs(db.notifications.channels) do
 			info = {}
 			info.text = v
 			info.value = v
 			info.func = function()
-			UIDropDownMenu_SetSelectedValue(chandropdown, this.value)
-			gui_chan = UIDropDownMenu_GetText(chandropdown)
+				UIDropDownMenu_SetSelectedValue(chandropdown, this.value)
+				db.notifications.channel = UIDropDownMenu_GetText(chandropdown)
 			end
 			info.checked = nil
 			UIDropDownMenu_AddButton(info, 1)
-			if gui_chan == nil then
+			if db.notifications.channel == nil then
 				UIDropDownMenu_SetSelectedValue(chandropdown, "Say")
 			else
-				UIDropDownMenu_SetSelectedValue(chandropdown, gui_chan)
+				UIDropDownMenu_SetSelectedValue(chandropdown, db.notifications.channel)
 			end
 		end
 	end
 	UIDropDownMenu_Initialize(chandropdown, InitializeDropdown)
 	
-	-- ==== TAB 3: DEBUFFS (RIGHT) ====
+	-- ==== TAB 3: DEBUFFS (RIGHT) ==== subsection
 
 	self.tabContents[3] = CreateFrame("Frame", nil, self)
 	self.tabContents[3]:SetWidth(560)
@@ -937,7 +1577,7 @@ function aDF.Options:Gui()
 		frame:SetPoint("TOPLEFT", self.tabContents[3], "TOPLEFT", x, y)
 	end
 	
-	-- ==== TAB SELECTION FUNCTION ====
+	-- ==== TAB SELECTION FUNCTION ==== subsection
 
 	function aDF.Options:SelectTab(tabIndex)
 		for i = 1, 3 do
@@ -953,10 +1593,11 @@ function aDF.Options:Gui()
 	end
 	
 	-- Show third tab by default
+	-- we always open options to debuff tab, when write /adf options
 
 	self:SelectTab(3)
 	
-	-- ==== DONE BUTTON ====
+	-- ==== DONE BUTTON ==== subsection
 
 	self.dbutton = CreateFrame("Button",nil,self,"UIPanelButtonTemplate")
 	self.dbutton:SetPoint("BOTTOM",0,10)
@@ -964,79 +1605,84 @@ function aDF.Options:Gui()
 	self.dbutton:SetWidth(79)
 	self.dbutton:SetHeight(18)
 	self.dbutton:SetText("Done")
-	self.dbutton:SetScript("OnClick", function() PlaySound("igMainMenuOptionCheckBoxOn"); aDF:Sort(); aDF:Update(); aDF.Options:Hide() end)
+	self.dbutton:SetScript("OnClick", function() 
+		PlaySound("igMainMenuOptionCheckBoxOn")
+		aDF:Sort()
+		aDF:Update()
+		-- Close the options frame
+		if aDF.Options and aDF.Options.Hide then
+			aDF.Options:Hide()
+		end
+	end)
 	self:Hide()
+
 end
 
--- ==== EVENT HANDLING ==== Aqui se manejan los eventos principales
--- 1. ADDON_LOADED --> Initialize saved variables, create frames
--- 2. PLAYER_TARGET_CHANGED --> Set aDF_target (target or targettarget)
--- 3. UNIT_AURA (throttled) --> Update debuffs if for our target
--- 4. (No OnUpdate!) --> Pure event-driven architecture
+-- ==== EVENT HANDLING ==== Main event handling
 
--- Main event handler
 function aDF:OnEvent()
 
-	-- ==== ADDON LOADED ====
+	-- ==== ADDON LOADED ==== subsection
+	-- Initialize addon when loaded, set up frames, defaults, etc.
 
-    if event == "ADDON_LOADED" and arg1 == "aDF" then
-        aDF_Default()
-        aDF_target = nil
-        aDF_armorprev = 30000
-        aDF.lastResUpdate = 0
-        if gui_chan == nil then gui_chan = "Say" end
-        if gui_announceArmorDrop ~= 1 then 
-            gui_announceArmorDrop = nil
-        end
-        if gui_showArmorBackground == nil then
-            gui_showArmorBackground = 1
-        end
-        if gui_showArmorText == nil then
-            gui_showArmorText = 1
-        end
-        if gui_showResText == nil then
-            gui_showResText = 1
-        end
-        aDF:Init()
-        aDF.Options:Gui()
-        aDF:Sort()
+	if event == "ADDON_LOADED" and arg1 == "aDF" then
+
+		-- Ensure the configuration structure is valid
+
+		EnsureConfigStructure()
+		
+		-- Initialize defaults for debuffs if needed
+
+		aDF_Default()
+		
+		-- Initialize state variables
+
+		aDF_target = nil
+		aDF_armorprev = 30000
+		aDF_lastResUpdate = 0
+		
+		-- Create frames!!!!!!
+		
+		aDF:Init()
+		aDF.Options:Gui()
+		aDF:Sort()
+		aDF:Update()
+
         DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r Loaded",1,1,1)
         DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
         DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
         DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
-        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 You can move the debuff icons by holding Shift and clicking on them",1,1,1)
-        return
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf reset|r to reset positions",1,1,1)
+        
+		return
     end
     
-    -- ==== THROTTLE PARA UNIT_AURA ====
-	-- UNIT_AURA fires VERY frequently, on every aura application/removal. Cause we need throttling
+	-- ==== THROTTLE FOR UNIT_AURA ====
 
     if event == "UNIT_AURA" then
 
-        -- Solo nuestro target o player
+		-- Only our target or player
 
         if arg1 ~= aDF_target and not (arg1 == "player" and aDF_target == "targettarget") then
             return
         end
         
+		-- Throttle updates to at most once every 0.5 seconds
+		-- This 0,5 can be slow to sunder, and warrior cry. But is necessary to performance
+
         local now = GetTime()
-
-        -- Si pasó más de 500ms desde la última actualización, actualizar inmediatamente
-		-- If more than 500ms have passed since the last update, update immediately
-
         if now - lastAuraTime > 0.5 then
             aDF:Update()
             lastAuraTime = now
             pendingUpdate = false
         else
-            -- Marcar que hay update pendiente
             pendingUpdate = true
         end
         return
     end
     
     -- ==== ACTIONS ON OTHER EVENTS ====
-
+	
     if pendingUpdate and GetTime() - lastAuraTime > 0.5 then
         aDF:Update()
         lastAuraTime = GetTime()
@@ -1044,10 +1690,6 @@ function aDF:OnEvent()
     end
     
     if event == "PLAYER_TARGET_CHANGED" then
-
-        -- Limpiar estado pendiente
-		-- Clear pending state
-
         pendingUpdate = false
         
         aDF_target = nil
@@ -1064,35 +1706,65 @@ function aDF:OnEvent()
     end
 end
 
--- ==== SCRIPT REGISTRATION ==== 
--- Aqui se registran los scripts principales, por el amor de dios no lo toques, si se borra se jode todo el addom, es codigo de herencia
--- This is legacy code, please do not modify or remove it. If you delete or comment aDF:SetScript("OnEvent", aDF.OnEvent), the addon will break.
+-- ==== SCRIPT REGISTRATION ====
+-- Register the main event handler, if commented/delete the addon will not work, plis don't touch :(
 
 aDF:SetScript("OnEvent", aDF.OnEvent)
 
--- ==== SLASH COMMANDS ==== Aqui definimos los comandos de /adf
+
+-- ==== SLASH COMMANDS ==== Define the /adf commands
 
 function aDF.slash(arg1,arg2,arg3)
-	if arg1 == nil or arg1 == "" then
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
-		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 You can move the debuff icons by holding Shift and clicking on them",1,1,1)
-		else
-		if arg1 == "show" then
-			aDF:Show()
-		elseif arg1 == "hide" then
-			aDF:Hide()
-		elseif arg1 == "options" then
-			aDF.Options:Show()
-		else
-			DEFAULT_CHAT_FRAME:AddMessage(arg1)
-			DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r unknown command",1,0.3,0.3);
-		end
-	end
+	local db = GetDB()  -- Get current configuration
+    
+    if arg1 == nil or arg1 == "" then
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf reset|r to reset positions",1,1,1)
+        DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 You can move frames by holding Shift and clicking on them",1,1,1)
+    else
+
+        if arg1 == "show" then
+            if aDF_ArmorFrame then aDF_ArmorFrame:Show() end
+            if aDF_ResFrame then aDF_ResFrame:Show() end
+            if aDF_DebuffFrame then aDF_DebuffFrame:Show() end
+
+        elseif arg1 == "hide" then
+            if aDF_ArmorFrame then aDF_ArmorFrame:Hide() end
+            if aDF_ResFrame then aDF_ResFrame:Hide() end
+            if aDF_DebuffFrame then aDF_DebuffFrame:Hide() end
+
+        elseif arg1 == "options" then
+            aDF.Options:Show()
+
+        elseif arg1 == "reset" then
+            db.positions.armor.x, db.positions.armor.y = 0, 0
+            db.positions.resistance.x, db.positions.resistance.y = 0, 30
+            db.positions.debuffs.x, db.positions.debuffs.y = 0, -50
+            if aDF_ArmorFrame then 
+                aDF_ArmorFrame:ClearAllPoints()
+                aDF_ArmorFrame:SetPoint("CENTER", 0, 0) 
+            end
+
+            if aDF_ResFrame then 
+                aDF_ResFrame:ClearAllPoints()
+                aDF_ResFrame:SetPoint("CENTER", 0, 30) 
+            end
+
+            if aDF_DebuffFrame then 
+                aDF_DebuffFrame:ClearAllPoints()
+                aDF_DebuffFrame:SetPoint("CENTER", 0, -50) 
+            end
+
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r Positions reset",1,1,1)
+
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r unknown command",1,0.3,0.3)
+        end
+    end
 end
 
 SlashCmdList['ADF_SLASH'] = aDF.slash
 SLASH_ADF_SLASH1 = '/adf'
 SLASH_ADF_SLASH2 = '/ADF'
-
