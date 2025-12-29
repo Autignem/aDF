@@ -53,7 +53,30 @@ If you accidentally delete wrong files:
 2. Restore any non-aDF files you deleted
 3. Other addons will recreate their settings when you launch WoW
 
---- New version --- v4.1
+--- New Version --- v4.2
+
+### NEW FEATURES:
+- **Centralized Configuration System**: Complete rewrite of settings management using structured profiles
+- **Decimal Scale Control**: Slider now supports fine-grained adjustments (0.1-10 with 0.05 steps)
+- **Enhanced UI Controls**: Added +/- buttons and numeric input field for scale adjustment
+
+### IMPROVEMENTS:
+- **Code Architecture**: Complete reorganization with clear subsections and better documentation
+- **Variable Naming**: More descriptive and consistent naming convention (db.display.*, db.locks.*)
+- **Future-Proofing**: Profile system foundation laid for future multi-profile support
+- **Frame Naming**: Fixed potential conflict by renaming options frame to aDF_OptionsFrame
+- **Add New Debuff**: Thunder clap (and other versions), fire vulnerability and demoralizing shout
+
+### TECHNICAL:
+- **Configuration Migration**: Safe migration system that preserves existing settings
+- **Boolean Consistency**: Unified use of true/false instead of mixed 1/nil values
+- **Base Constants**: Added ICON_BASE, FONT_BASE_* constants for clearer calculations
+- **Tooltip Management**: Added proper cleanup when closing options panel
+
+### NOTES:
+- **⚠️ Requires deleting old SavedVariables** (aDF.lua and aDF.lua.bak) due to configuration structure changes
+
+--- Version --- v4.1
 
 ### Changes Made:
 
@@ -170,4 +193,5 @@ rewrote the core
 
 
 First release
+
 
