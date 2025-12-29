@@ -5,6 +5,6 @@
 ## Notes: Armor/resistance and Debuff frame
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
-## SavedVariables: guiOptions, gui_Options, gui_chan, gui_Optionsxy, aDF_x, aDF_y, gui_announceArmorDrop, gui_showArmorBackground, gui_showArmorText, gui_showResText
+## SavedVariables: aDF_Options
 
 aDF.lua
