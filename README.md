@@ -1,6 +1,6 @@
 # aDF - Amor/debuff Frame for Turtle WoW
 
-### 🔄 **UPDATING FROM OLDER VERSIONS? READ THIS!** v1.0-v4.1
+### 🔄 **UPDATING FROM OLDER VERSIONS? READ THIS!** v1.0-v4.2
 
 aDF v4.0 is a **complete codebase rewrite** with different data structures. You **MUST** clean your SavedVariables:
 
