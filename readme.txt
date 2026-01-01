@@ -56,6 +56,11 @@ If you accidentally delete wrong files:
 --- New Version --- v4.2
 
 ### NEW FEATURES:
+- **Character profile**: .toc is changed
+
+--- Version --- v4.2
+
+### NEW FEATURES:
 - **Centralized Configuration System**: Complete rewrite of settings management using structured profiles
 - **Decimal Scale Control**: Slider now supports fine-grained adjustments (0.1-10 with 0.05 steps)
 - **Enhanced UI Controls**: Added +/- buttons and numeric input field for scale adjustment
@@ -193,5 +198,6 @@ rewrote the core
 
 
 First release
+
 
 
