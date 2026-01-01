@@ -5,6 +5,6 @@
 ## Notes: Armor/resistance and Debuff frame
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
-## SavedVariables: aDF_Options
+## SavedVariablesPerCharacter: aDF_Options
 
 aDF.lua
