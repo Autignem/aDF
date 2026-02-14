@@ -1,4 +1,4 @@
----########### armor/resistance and Debuff Frame
+--########### armor/resistance and Debuff Frame
 -- ########### By Atreyyo @ Vanillagaming.org <--original
 -- ########### Contributor: Autignem <--reworked/rewrite
 -- ########### Version 4.2
@@ -6,7 +6,7 @@
 -- order of sections:
 -- 1. FRAME INITIALIZATION
 -- 2. GLOBAL VARIABLES AND STORAGE
--- 2.1 CENTRALIZED CONFIGURATION SYSTEM
+-- 2.1. CENTRALIZED CONFIGURATION SYSTEM
 -- 2.2 VARIABLES RUNTIME
 -- 3. DATA TABLES: SPELLS AND DEBUFFS
 -- 4. DATA TABLE: ARMOR VALUES
@@ -296,11 +296,13 @@ aDFSpells = {
 	["Flame Buffet"] = "Flame Buffet", --arcanite dragon/fire buff
 
 	--other
-
+	
+	["Seal of the Crusader"] = "Seal of the Crusader", -- crusader
 	["Gift of Arthas"] = "Gift of Arthas", --arthas gift
 	["Crooked Claw"] = "Crooked Claw", --scythe pet 2% melee
 	["Demoralizing Shout"] = {"Demoralizing Shout", "Demoralizing Roar"}, --need testing
-	["Thunder Clap"] = {"Thunder Clap","Thunderfury", "Frigid Blast"} --need testing
+	["Thunder Clap"] = {"Thunder Clap","Thunderfury", "Frigid Blast"}, --need testing
+	["Elune's Twilight"] = "Elune's Twilight",
 }
 
 -- Table with debuff names and their icon textures
@@ -330,7 +332,8 @@ aDFDebuffs = {
 	["Judgement of Wisdom"] = "Interface\\Icons\\Spell_Holy_RighteousnessAura",
 
 	--other
-
+	
+	["Seal of the Crusader"] = "Interface\\Icons\\Spell_Holy_HolySmite", -- crusader
 	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
 	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
 	["Demoralizing Shout"] = "Interface\\Icons\\Ability_Warrior_WarCry", --reduction melee attack
@@ -407,6 +410,7 @@ aDFOrder = {
 
 	--spells/caster
 	
+	"Seal of the Crusader", -- crusader
     "Judgement of Wisdom",
     "Curse of Shadows",
     "Curse of the Elements",
@@ -445,8 +449,8 @@ end
 function aDF.Create_frame(name)
 	local db = GetDB()  -- Get current configuration
 	local frame = CreateFrame('Button', name, aDF)
-	frame:SetBackdrop({ bgFile=[[Interface/Tooltips/UI-Tooltip-Background]] })
-	frame:SetBackdropColor(255,255,255,1)
+	frame:SetBackdrop({ bgFile=[[Interface/Tooltips/UI-Tooltip-Background]] }) --study to delete
+	frame:SetBackdropColor(255,255,255,0) --study to delete
 	frame.icon = frame:CreateTexture(nil, 'ARTWORK')
 	frame.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 	frame.icon:SetPoint('TOPLEFT', 1, -1)
@@ -472,7 +476,6 @@ function aDF.Create_guiframe(name)
 			db.enabledDebuffs[name] = false  -- Change nil to false, no diference in logic, but more clean
 		elseif isChecked == 1 then 
 			db.enabledDebuffs[name] = true
-		table.sort(db.enabledDebuffs)
 		end
 		aDF:Sort()
 		aDF:Update()
@@ -711,7 +714,7 @@ function aDF:Update()
         end
         for i, v in pairs(db.enabledDebuffs) do
             if aDF_frames[i] then
-                aDF_frames[i].icon:SetAlpha(0.3)
+                aDF_frames[i].icon:SetAlpha(0)
                 aDF_frames[i].nr:SetText("")
             end
         end
