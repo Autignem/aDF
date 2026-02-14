@@ -1,4 +1,4 @@
---########### armor/resistance and Debuff Frame
+---########### armor/resistance and Debuff Frame
 -- ########### By Atreyyo @ Vanillagaming.org <--original
 -- ########### Contributor: Autignem <--reworked/rewrite
 -- ########### Version 4.2
@@ -292,6 +292,7 @@ aDFSpells = {
 	["Curse of the Elements"] = "Curse of the Elements",
 	["Fire Vulnerability"] = "Fire Vulnerability",
 	["Shadow Weaving"] = "Shadow Weaving",
+	["Shadow Vulnerability"] = "Shadow Vulnerability", --lock talent
 	["Nightfall"] = "Spell Vulnerability",
 	["Flame Buffet"] = "Flame Buffet", --arcanite dragon/fire buff
 
@@ -326,6 +327,7 @@ aDFDebuffs = {
 	["Curse of the Elements"] = "Interface\\Icons\\Spell_Shadow_ChillTouch",
 	["Shadow Weaving"] = "Interface\\Icons\\Spell_Shadow_BlackPlague",
 	["Fire Vulnerability"] = "Interface\\Icons\\Spell_Fire_SoulBurn",
+	["Shadow Vulnerability"] = "Interface\\Icons\\Spell_Shadow_ShadowBolt", --lock talent
 	["Nightfall"] = "Interface\\Icons\\Spell_Holy_ElunesGrace",
 	["Flame Buffet"] = "Interface\\Icons\\Spell_Fire_Fireball",
 	["Decaying Flesh"] = "Interface\\Icons\\Spell_Shadow_Lifedrain",
@@ -333,7 +335,7 @@ aDFDebuffs = {
 
 	--other
 	
-	["Seal of the Crusader"] = "Interface\\Icons\\Spell_Holy_HolySmite", -- crusader
+	["Seal of the Crusader"] = "Interface\\Icons\\Spell_Holy_Holysmite", -- crusader
 	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
 	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
 	["Demoralizing Shout"] = "Interface\\Icons\\Ability_Warrior_WarCry", --reduction melee attack
@@ -407,7 +409,7 @@ aDFOrder = {
 	"Crooked Claw", --scythe pet
 	"Demoralizing Shout",
 	"Thunder Clap",
-
+	
 	--spells/caster
 	
 	"Seal of the Crusader", -- crusader
@@ -415,6 +417,7 @@ aDFOrder = {
     "Curse of Shadows",
     "Curse of the Elements",
 	"Fire Vulnerability",
+	"Shadow Vulnerability", --lock talent
 	"Shadow Weaving",
     "Nightfall",
     "Flame Buffet" --arcanite dragon
@@ -1771,3 +1774,4 @@ end
 SlashCmdList['ADF_SLASH'] = aDF.slash
 SLASH_ADF_SLASH1 = '/adf'
 SLASH_ADF_SLASH2 = '/ADF'
+
