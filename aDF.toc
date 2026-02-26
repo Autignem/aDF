@@ -1,6 +1,6 @@
 ## Interface: 11200
 ## Title: aDF |cff7fff7fby |cffF5F54AAutignem
-## Author: Original Atreyyo, Contributor: Autignem
+## Author: Autignem (rewrite and current maintenance), Original Atreyyo
 ## Version: 4.3
 ## Notes: Armor/resistance and Debuff frame
 ## DefaultState: Enabled
