@@ -3,6 +3,12 @@
 -- ########### Contributor: Autignem <--reworked/rewrite
 -- ########### Version 4.3 (27/02/2026)
 
+-- Module: init.lua
+-- Purpose: bootstrap main frames and register core events.
+-- Exports: global aDF frame and aDF.Options frame.
+-- Depends on: WoW UI API.
+-- Used by: all modules through global aDF namespace.
+
 -- ============================================================================
 -- aDF modular structure (load order from aDF.toc)
 --
@@ -23,6 +29,7 @@
 -- 15. core\slash.lua               -> /adf commands
 -- ============================================================================
 
+
 -- ==== FRAME INITIALIZATION ==== 
 -- Use a distinct global name for the options frame so it doesn't collide with the
 -- SavedVariables table `aDF_Options`. UISpecialFrames expects a Frame, not a table.
@@ -37,3 +44,4 @@ aDF:RegisterEvent("ADDON_LOADED")
 aDF:RegisterEvent("UNIT_AURA")
 
 aDF:RegisterEvent("PLAYER_TARGET_CHANGED")
+
