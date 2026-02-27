@@ -1,3 +1,9 @@
+-- Module: debuff_icons.lua
+-- Purpose: build reusable debuff icon frame objects.
+-- Exports: aDF.Create_frame().
+-- Depends on: GetDB(), ICON/FONT constants, aDF parent frame.
+-- Used by: ui/frames.lua.
+
 -- ==== DEBUFF FRAME CREATION ==== Functions to create debuff frames
 
 -- Creates the debuff frame elements
@@ -19,4 +25,5 @@ function aDF.Create_frame(name)
 	frame.nr:SetText("1")
 	return frame
 end
+
 
