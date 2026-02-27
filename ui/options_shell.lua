@@ -1,4 +1,10 @@
--- New 3-column options shell.
+-- Module: options_shell.lua
+-- Purpose: main 3-column options UI and interactive setting views.
+-- Exports: aDF.Options:Gui(), section/child/view handlers.
+-- Depends on: GetDB(), options registry/widgets, frame globals.
+-- Used by: core/events.lua init and /adf options|config.
+
+-- New 3 column options shell.
 
 local tinsert = table.insert
 local floor = math.floor
