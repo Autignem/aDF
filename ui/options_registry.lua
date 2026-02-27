@@ -1,3 +1,9 @@
+-- Module: options_registry.lua
+-- Purpose: declare options navigation sections and views.
+-- Exports: aDF_OptionsRegistry + GetSection().
+-- Depends on: none.
+-- Used by: ui/options_shell.lua.
+
 -- Registry for 3-column options navigation.
 
 aDF_OptionsRegistry = {
@@ -40,3 +46,4 @@ function aDF_OptionsRegistry:GetSection(id)
     end
     return nil
 end
+
