@@ -2,7 +2,7 @@
 
 ### 🔄 **UPDATING FROM OLDER VERSIONS? READ THIS!** v1.0-v4.3
 
-aDF v4.2.1+ is a **complete codebase rewrite** with different data structures. You **MUST** clean your SavedVariables:
+aDF v4.2.1 is a **complete codebase rewrite** with different data structures. You **MUST** clean your SavedVariables:
 
 #### Step-by-Step Update Guide:
 1. **Exit WoW completely** (to desktop, not just `/reload`)
@@ -67,6 +67,7 @@ This version can see in https://github.com/Autignem/aDF/issues. Pull request are
 - **Goffauxs** - Code contributions and improvements
 
 Last version developed Zebouski
+
 
 
 
