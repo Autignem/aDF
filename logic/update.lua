@@ -1,3 +1,9 @@
+-- Module: update.lua
+-- Purpose: refresh armor, resistances, alerts and debuff icon states.
+-- Exports: aDF:Update().
+-- Depends on: GetDB(), aDF_State, GetDebuff(), data tables and frame globals.
+-- Used by: core/events.lua and options interactions.
+
 -- ==== UPDATE FUNCTIONS ==== 
 -- Update functions. Main update function for armor/resistance display and debuff icon states
 local S = aDF_State
@@ -93,4 +99,5 @@ function aDF:Update()
             end
         end
     end
+
 end
