@@ -1,3 +1,9 @@
+-- Module: options_widgets.lua
+-- Purpose: reusable helper widgets for the options shell.
+-- Exports: aDF_OptionsWidgets helper table.
+-- Depends on: WoW frame API.
+-- Used by: ui/options_shell.lua.
+
 -- Shared UI widget helpers for the new options shell.
 
 aDF_OptionsWidgets = {}
