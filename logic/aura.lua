@@ -1,3 +1,9 @@
+-- Module: aura.lua
+-- Purpose: detect tracked effects on target via debuff/buff scan.
+-- Exports: aDF:GetDebuff().
+-- Depends on: UnitDebuff/UnitBuff APIs, shared tooltip scanner.
+-- Used by: logic/update.lua.
+
 -- ==== DEBUFF DETECTION ====
 -- Function to check for a debuff/buff on a unit, by name or tooltip text
 -- We need checking debuff and buff because when debuff slot is full, some debuffs are applied as buffs slot
@@ -50,4 +56,5 @@ function aDF:GetDebuff(name, buff, wantStacks)
     else
         return found
     end
+
 end
