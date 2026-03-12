@@ -13,7 +13,7 @@ local ICON_UPDATE_THROTTLE = 0.5
 function aDF:Update()
 	local db = GetDB()  -- Get current configuration
     
-    if not S.target or not UnitExists(S.target) or UnitIsDead(S.target) then
+    if not S.target or not UnitExists(S.target) or UnitIsDead(S.target) or UnitIsFriend("player", S.target) then
         if aDF_ArmorFrame and aDF_ArmorFrame.armor then
             aDF_ArmorFrame.armor:SetText("")
         end
