@@ -37,7 +37,7 @@ aDFSpells = {
 	["Gift of Arthas"] = "Gift of Arthas", --arthas gift
 	["Flame Buffet"] = "Flame Buffet", --arcanite dragon/fire buff
 	["Elune's Twilight"] = "Elune's Twilight", -- will add
-	["Seal of the Crusader"] = "Seal of the Crusader", -- crusader
+	["Judgement of the Crusader"] = "Judgement of the Crusader", -- crusader
 	["Crooked Claw"] = "Crooked Claw", --scythe pet 2% melee
 
 	--damage
@@ -77,7 +77,7 @@ aDFDebuffs = {
 	["Flame Buffet"] = "Interface\\Icons\\Spell_Fire_Fireball",
 	["Decaying Flesh"] = "Interface\\Icons\\Spell_Shadow_Lifedrain",
 	["Judgement of Wisdom"] = "Interface\\Icons\\Spell_Holy_RighteousnessAura",
-	["Seal of the Crusader"] = "Interface\\Icons\\Spell_Holy_Holysmite", -- crusader
+	["Judgement of the Crusader"] = "Interface\\Icons\\Spell_Holy_Holysmite", -- crusader
 	["Gift of Arthas"] = "Interface\\Icons\\Spell_Nature_NullifyDisease", --arthas gift
 	["Crooked Claw"] = "Interface\\Icons\\Ability_Druid_Rake", --scythe pet 2% melee
 
@@ -159,7 +159,7 @@ aDFOrder = {
 	
 	--spells/caster
 	
-	"Seal of the Crusader", -- crusader
+	"Judgement of the Crusader", -- crusader
     "Judgement of Wisdom",
     "Curse of Shadows",
     "Curse of the Elements",
