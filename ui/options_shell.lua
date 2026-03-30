@@ -34,7 +34,7 @@ local DEBUFF_CATEGORY_MAP = {
         ["Gift of Arthas"] = true,
         ["Flame Buffet"] = true,
         ["Elune's Twilight"] = true,
-        ["Seal of the Crusader"] = true,
+        ["Judgement of the crusader"] = true,
         ["Crooked Claw"] = true,
     },
     damage = {
